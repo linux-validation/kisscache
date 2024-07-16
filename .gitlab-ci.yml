@@ -30,7 +30,7 @@ stages:
 
 .analyze:
   extends: .job
-  image: debian:bullseye
+  image: debian:bookworm
   stage: analyze
   except:
     refs:
@@ -39,9 +39,9 @@ stages:
 ########
 # Test #
 ########
-test-debian-11:
+test-debian-12:
   extends: .job
-  image: debian:bullseye
+  image: debian:bookworm
   stage: test
   before_script:
   - apt-get update -qq

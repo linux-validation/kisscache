@@ -5,7 +5,6 @@ import django.utils.timezone
 
 
 class Migration(migrations.Migration):
-
     dependencies = [("kiss_cache", "0006_resources_state_and_status_code")]
 
     operations = [

@@ -10,7 +10,6 @@ def create_statistics(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [("kiss_cache", "0011_add_more_statistics")]
 
     operations = [

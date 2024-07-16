@@ -12,7 +12,6 @@ def create_statistics(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [("kiss_cache", "0007_resource_created_at")]
 
     operations = [
