@@ -17,12 +17,12 @@ stages:
 
 .dind:
   extends: .job
-  image: docker:stable
+  image: docker:24.0.9
   variables:
     DOCKER_DRIVER: "overlay2"
     DOCKER_CLI_EXPERIMENTAL: "enabled"
   services:
-  - docker:stable-dind
+  - docker:24.0.9-dind
 
 .docker:
   extends: .dind
