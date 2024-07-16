@@ -6,7 +6,7 @@ if [ "$1" = "setup" ]
 then
   set -x
   apt-get -q update
-  apt-get install --no-install-recommends --yes pylint3 python3-pylint-django
+  apt-get install --no-install-recommends --yes pylint python3-pylint-django
 else
   set -x
   # Only run some pylint checkers

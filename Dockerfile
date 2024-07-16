@@ -1,18 +1,31 @@
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 LABEL maintainer="Rémi Duraffort <remi.duraffort@linaro.org>"
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PKG_DEPS="\
+  gunicorn \
+  libjs-jquery \
+  nginx \
+  postgresql-client \
+  python3-celery \
+  python3-django \
+  python3-django-auth-ldap \
+  python3-pip \
+  python3-psycopg2 \
+  python3-redis \
+  python3-requests \
+  python3-sentry-sdk \
+  python3-whitenoise \
+  python3-yaml \
+"
 
 # Install dependencies
-RUN echo 'deb http://deb.debian.org/debian bullseye-backports main' > /etc/apt/sources.list.d/backports.list && \
+RUN echo 'deb http://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/backports.list && \
     mkdir -p /usr/share/man/man1 /usr/share/man/man7 && \
-    apt-get update -q && \
-    apt-get install --no-install-recommends --yes gunicorn python3-django && \
-    apt-get install --no-install-recommends --yes nginx postgresql-client-13 && \
-    apt-get install --no-install-recommends --yes python3-celery python3-django-auth-ldap python3-pip python3-psycopg2 python3-redis python3-requests python3-whitenoise python3-yaml && \
-    apt-get install --no-install-recommends --yes libjs-jquery && \
-    python3 -m pip install --upgrade sentry-sdk==1.5.6 && \
+    apt update -q=2 && \
+    apt full-upgrade -q=2 --yes && \
+    apt install -q=2 --yes --no-install-recommends ${PKG_DEPS} && \
     # Drop default nginx site
     rm /etc/nginx/sites-enabled/default && \
     # Cleanup
@@ -24,10 +37,8 @@ RUN echo 'deb http://deb.debian.org/debian bullseye-backports main' > /etc/apt/s
 WORKDIR /app/
 RUN addgroup --system --gid 200 kiss-cache && \
     adduser --system --uid 200 --gid 200 kiss-cache && \
-    mkdir /var/cache/kiss-cache/ && \
-    mkdir /var/lib/kiss-cache/ && \
-    chown -R kiss-cache /var/cache/kiss-cache/ && \
-    chown -R kiss-cache /var/lib/kiss-cache/ && \
+    mkdir -p /var/cache/kiss-cache /var/lib/kiss-cache && \
+    chown -R kiss-cache /var/cache/kiss-cache /var/lib/kiss-cache && \
     chmod 775 /app && \
     django-admin startproject website /app
 

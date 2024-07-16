@@ -4,7 +4,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [("kiss_cache", "0003_auto_20190726_0838")]
 
     operations = [migrations.RemoveField(model_name="resource", name="filename")]

@@ -8,5 +8,5 @@ then
   apt-get install --no-install-recommends --yes black
 else
   set -x
-  LC_ALL=C.UTF-8 LANG=C.UTF-8 black --check kiss_cache
+  LC_ALL=C.UTF-8 LANG=C.UTF-8 black --check --diff kiss_cache
 fi

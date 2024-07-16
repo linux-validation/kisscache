@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("kiss_cache", "0013_resource_content_length_big_integer"),
     ]
