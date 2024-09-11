@@ -23,7 +23,7 @@ def test_index(client):
     assert len(ret.templates) == 2
     assert ret.templates[0].name == "kiss_cache/index.html"
     assert ret.templates[1].name == "kiss_cache/base.html"
-    assert ret.context["api_url"] == "http://testserver/api/v1/fetch/"
+    assert ret.context["api_url"] == "http://testserver/api/v1/fetch"
     assert ret.context["version"] == __version__
 
 
@@ -35,7 +35,7 @@ def test_help(client):
     assert ret.context["ALLOWED_NETWORKS"] == []
     assert ret.context["user_ip"] == "127.0.0.1"
     assert ret.context["user_ip_allowed"] == True
-    assert ret.context["api_url"] == "http://testserver/api/v1/fetch/"
+    assert ret.context["api_url"] == "http://testserver/api/v1/fetch"
 
 
 def test_statistics(client, db, settings):
@@ -269,7 +269,7 @@ def test_api_fetch(client, db, mocker, settings, tmpdir):
     # Download a forth time: set the Content-Disposition
     # Do not use xsendfile anymore
     settings.USE_XSENDFILE = False
-    ret = client.get(f"{reverse('api.fetch')}kernel?url={URL}")
+    ret = client.get(f"{reverse('api.fetch_by_filename', kwargs={'filename': 'kernel'})}?url={URL}")
     assert isinstance(ret, FileResponse)
     assert ret.status_code == 200
     assert ret["content-type"] == "text/html; charset=UTF-8"
@@ -306,8 +306,7 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
     settings.DOWNLOAD_PATH = str(tmpdir)
 
     fetch = mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
-
-    ret = client.get(f"{reverse('api.fetch')}ramdisk.tgz?url={URL}&ttl=42d")
+    ret = client.get(f"{reverse('api.fetch_by_filename', kwargs={'filename': 'ramdisk.tgz'})}?url={URL}&ttl=42d")
     assert isinstance(ret, StreamingHttpResponse)
     assert ret.status_code == 200
     assert ret["content-type"] == "text/html; charset=UTF-8"
