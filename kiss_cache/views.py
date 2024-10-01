@@ -184,6 +184,10 @@ def api_fetch(request, filename=None):
     url = request.GET.get("url")
     ttl = request.GET.get("ttl", settings.DEFAULT_TTL)
 
+    if url and filename is None:
+        # Take last part of url provided as parameter for Content-Disposition header
+        filename = url.split("/")[-1]
+
     # Check parameters
     if url is None:
         return HttpResponseBadRequest("'url' should be specified")
