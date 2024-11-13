@@ -33,7 +33,12 @@ from django.views.decorators.http import require_safe
 from kiss_cache.__about__ import __version__
 from kiss_cache.models import Resource, Statistic
 from kiss_cache.tasks import fetch
-from kiss_cache.utils import check_client_ip, is_client_allowed, get_user_ip
+from kiss_cache.utils import (
+    check_client_ip,
+    is_client_allowed,
+    get_user_ip,
+    get_mirror_url,
+)
 
 
 def index(request):
@@ -183,6 +188,10 @@ def api_health(request):
 def api_fetch(request, filename=None):
     url = request.GET.get("url")
     ttl = request.GET.get("ttl", settings.DEFAULT_TTL)
+
+    mirror_url = get_mirror_url(url)
+    if mirror_url:
+        url = mirror_url
 
     if url and filename is None:
         # Take last part of url provided as parameter for Content-Disposition header
