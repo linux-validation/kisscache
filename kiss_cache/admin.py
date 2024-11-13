@@ -10,7 +10,7 @@
 from django.contrib import admin
 from django.template.defaultfilters import filesizeformat
 
-from kiss_cache.models import Resource, Statistic
+from kiss_cache.models import Resource, Statistic, Mirror
 
 
 class ResourceAdmin(admin.ModelAdmin):
@@ -34,5 +34,11 @@ class StatisticAdmin(admin.ModelAdmin):
             return filesizeformat(obj.value)
 
 
+class MirrorAdmin(admin.ModelAdmin):
+    list_display = ("url_pattern", "mirrors")
+    search_fields = ("url_pattern",)
+
+
 admin.site.register(Resource, ResourceAdmin)
 admin.site.register(Statistic, StatisticAdmin)
+admin.site.register(Mirror, MirrorAdmin)
