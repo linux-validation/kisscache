@@ -2,15 +2,17 @@
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
+# Copyright 2024 NXP
 #
 # Author: Rémi Duraffort <remi.duraffort@linaro.org>
+# Author: Andy Sabathier <andy.sabathier@nxp.com>
 #
 # SPDX-License-Identifier: MIT
 
 import pytest
 import time
 
-from kiss_cache.models import Resource
+from kiss_cache.models import Resource, Mirror
 
 
 def test_resource_parse_ttl():
@@ -222,3 +224,60 @@ def test_resource_stream_errors_5(db, monkeypatch, settings, tmpdir):
     # the length is good: no exception should be raised
     with pytest.raises(StopIteration):
         next(it)
+
+
+@pytest.mark.django_db
+def test_create_mirror():
+    mirror = Mirror.objects.create(
+        url_pattern=r"http(s)?:\/\/mirror.*.com\/.*",
+        mirrors="mirror1.com\nmirror2.com\nmirror3.com",
+    )
+
+    assert mirror.url_pattern == r"http(s)?:\/\/mirror.*.com\/.*"
+    assert mirror.mirrors == "mirror1.com\nmirror2.com\nmirror3.com"
+
+    assert str(mirror) == "Mirrors for pattern: http(s)?:\/\/mirror.*.com\/.*"
+
+
+@pytest.mark.django_db
+def test_get_preferred_mirrors():
+    # Créer une instance de Mirror
+    mirror = Mirror.objects.create(
+        url_pattern=r"http(s)?:\/\/miror.*.com\/.*",
+        mirrors="mirror1.com\nmirror2.com\nmirror3.com",
+    )
+
+    # Vérifier que la méthode get_preferred_mirrors retourne la bonne liste
+    preferred_mirrors = mirror.get_preferred_mirrors()
+    assert preferred_mirrors == ["mirror1.com", "mirror2.com", "mirror3.com"]
+
+
+@pytest.mark.django_db
+def test_match_url_valid():
+    mirror = Mirror.objects.create(
+        url_pattern=r"https:\/\/mirror.*.com\/.*",
+        mirrors="mirror1.com\nmirror2.com\nmirror3.com",
+    )
+
+    assert mirror.match_url("https://mirror3.com/")
+    assert mirror.match_url("https://mirror1.com/")
+
+
+@pytest.mark.django_db
+def test_match_url_invalid_pattern():
+    mirror = Mirror.objects.create(
+        url_pattern=r"https:\/\/mirror.*.com\/.*",
+        mirrors="mirror1.com\nmirror2.com\nmirror3.com",
+    )
+
+    assert not mirror.match_url("http://example.com/")
+    assert not mirror.match_url("ftp://mirror1.org/")
+
+
+@pytest.mark.django_db
+def test_mirror_creation_without_pattern():
+    mirror = Mirror.objects.create(
+        url_pattern=r"https:\/\/mirror.*.com\/.*", mirrors=""
+    )
+
+    assert mirror.mirrors == ""
