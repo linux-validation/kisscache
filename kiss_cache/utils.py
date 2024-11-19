@@ -19,6 +19,9 @@ from django.conf import settings
 from django.http import HttpResponseForbidden
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+from django.http import (
+    HttpResponse,
+)
 
 from kiss_cache.models import Mirror
 
@@ -45,18 +48,57 @@ def is_client_allowed(request):
     return False
 
 
-def get_mirror_url(url):
+def get_authorized_mirror_url(url, auth_header=None):
+    """
+    Determines the best available URL (including mirrors) that is both accessible and authorized.
+
+    Args:
+        url (str): The original URL to fetch.
+        auth_header (str, optional): Authorization header for authentication.
+
+    Returns:
+        tuple: A tuple containing:
+            - test_url (str or None): The first valid URL or None if no valid URL is found.
+            - response (HttpResponse): The corresponding HTTP response.
+            - authorized (bool): Indicates whether the request is authorized (True or False).
+    """
+    # Initialize headers for the request
+    headers = {"User-Agent": "KissCache"}
+    if auth_header:
+        headers["Authorization"] = auth_header
+    authorized = True
+    urls_to_check = []
+
+    # Fetch all mirrors from the database and check if they match the original URL
     mirrors_queryset = Mirror.objects.all()
     for mirror in mirrors_queryset:
-        if mirror.match_url(url):
+        if mirror.match_url(url):  # Check if the mirror applies to the given URL
             for mirror_url in mirror.get_preferred_mirrors():
                 parsed_url = urlparse(url)
                 modified_url = f"{parsed_url.scheme}://{mirror_url}{parsed_url.path}"
-                with contextlib.suppress(requests.RequestException):
-                    response = requests.head(modified_url, timeout=5)
-                    if response.status_code == 200:
-                        return modified_url
-    return None
+                urls_to_check.append(modified_url)
+
+    # If no mirrors were found, add the original URL as a fallback
+    if not urls_to_check:
+        urls_to_check.append(url)
+
+    # Iterate through all URLs to check their validity and authorization status
+    for test_url in urls_to_check:
+        with contextlib.suppress(requests.RequestException):
+            response = requests.head(
+                test_url, headers=headers, timeout=settings.DOWNLOAD_TIMEOUT
+            )
+            if response.status_code == 200:
+                return test_url, response, authorized
+            elif response.status_code == 401:
+                authorized = False
+                # Create an unauthorized HTTP response with the appropriate header
+                response_obj = HttpResponse("Unauthorized", status=401)
+                response_obj["WWW-Authenticate"] = 'Basic realm="KissCache"'
+                return test_url, response_obj, authorized
+
+    # If no valid URL is found, return a 404 response
+    return url, HttpResponse("No valid URL found", status=404), authorized
 
 
 def check_client_ip(func):
