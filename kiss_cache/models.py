@@ -2,8 +2,10 @@
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
+# Copyright 2024 NXP
 #
 # Author: Rémi Duraffort <remi.duraffort@linaro.org>
+# Author: Andy Sabathier <andy.sabathier@nxp.com>
 #
 # SPDX-License-Identifier: MIT
 
@@ -11,6 +13,7 @@ import contextlib
 import hashlib
 import pathlib
 import time
+import re
 
 from django.db import models
 from django.db.models import F
@@ -197,3 +200,24 @@ class Statistic(models.Model):
     @classmethod
     def requests(cls, value=None):
         return cls._accessor(Statistic.STAT_REQUESTS, value)
+
+
+class Mirror(models.Model):
+    # regexp
+    url_pattern = models.CharField(
+        max_length=255, help_text="Regular expression for matching URLs"
+    )
+
+    # Field to store a list of mirror URLs, ordered by preference
+    mirrors = models.TextField(help_text="Ordered list of mirror URLs")
+
+    def __str__(self):
+        return f"Mirrors for pattern: {self.url_pattern}"
+
+    def get_preferred_mirrors(self):
+        """Returns the list of mirrors in order of preference."""
+        return self.mirrors.splitlines()
+
+    def match_url(self, url):
+        """Checks if a URL matches this mirror's pattern."""
+        return re.match(self.url_pattern, url) is not None
