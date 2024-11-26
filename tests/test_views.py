@@ -210,7 +210,7 @@ def test_api_health(client, mocker, settings, tmpdir):
 def test_api_fetch(client, db, mocker, settings, tmpdir):
     URL = "https://example.com"
 
-    def mocked_fetch(url):
+    def mocked_fetch(url, auth_header):
         assert url == URL
         Resource.objects.filter(url=URL).update(
             state=Resource.STATE_FINISHED,
@@ -269,7 +269,9 @@ def test_api_fetch(client, db, mocker, settings, tmpdir):
     # Download a forth time: set the Content-Disposition
     # Do not use xsendfile anymore
     settings.USE_XSENDFILE = False
-    ret = client.get(f"{reverse('api.fetch_by_filename', kwargs={'filename': 'kernel'})}?url={URL}")
+    ret = client.get(
+        f"{reverse('api.fetch_by_filename', kwargs={'filename': 'kernel'})}?url={URL}"
+    )
     assert isinstance(ret, FileResponse)
     assert ret.status_code == 200
     assert ret["content-type"] == "text/html; charset=UTF-8"
@@ -286,7 +288,7 @@ def test_api_fetch(client, db, mocker, settings, tmpdir):
 def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
     URL = "https://example.com"
 
-    def mocked_fetch(url):
+    def mocked_fetch(url, auth_header):
         assert url == URL
         Resource.objects.filter(url=URL).update(
             state=Resource.STATE_DOWNLOADING,
@@ -306,7 +308,9 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
     settings.DOWNLOAD_PATH = str(tmpdir)
 
     fetch = mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
-    ret = client.get(f"{reverse('api.fetch_by_filename', kwargs={'filename': 'ramdisk.tgz'})}?url={URL}&ttl=42d")
+    ret = client.get(
+        f"{reverse('api.fetch_by_filename', kwargs={'filename': 'ramdisk.tgz'})}?url={URL}&ttl=42d"
+    )
     assert isinstance(ret, StreamingHttpResponse)
     assert ret.status_code == 200
     assert ret["content-type"] == "text/html; charset=UTF-8"
@@ -317,10 +321,17 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
 
 def test_api_fetch_errors(client, db, mocker):
     URL = "https://example.com"
+    mocker.patch(
+        "kiss_cache.views.get_authorized_mirror_url", return_value=(None, None, True)
+    )
 
     #  missing url
     ret = client.get(reverse("api.fetch"))
     assert ret.status_code == 400
+
+    mocker.patch(
+        "kiss_cache.views.get_authorized_mirror_url", return_value=(URL, None, True)
+    )
 
     # Invalid ttl format
     ret = client.get(f"{reverse('api.fetch')}?url={URL}&ttl=1k")
