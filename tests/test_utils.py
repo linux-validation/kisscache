@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from kiss_cache.models import Mirror
 
 from django.http import HttpResponseForbidden
+from django.http import HttpResponse
 
 import kiss_cache
 from kiss_cache.utils import (
@@ -25,7 +26,7 @@ from kiss_cache.utils import (
     get_user_ip,
     is_client_allowed,
     requests_retry,
-    get_mirror_url,
+    get_authorized_mirror_url,
 )
 
 
@@ -93,47 +94,72 @@ def test_requests_retry(settings):
 
 
 @pytest.mark.django_db
-def test_get_mirror_url():
+def test_get_authorized_mirror_url():
     # Set up a Mirror object in the database
     mirror = Mirror.objects.create(
         url_pattern=r"^https://example\.com", mirrors="mirror1.com\nmirror2.com"
     )
-    # URL to test
+     # URL to test
     url = "https://example.com/path"
+    auth_header = "Bearer test-token"
 
-    # Scenario where the first mirror returns a 200 status code
+    # Scenario where the first mirror is authorized and returns 200 status code
     with mock.patch("requests.head") as mock_head:
         mock_response = mock.Mock()
         mock_response.status_code = 200
         mock_head.return_value = mock_response
 
-        # Call the get_mirror_url function with the URL
-        result = get_mirror_url(url)
+        # Call the function
+        result_url, response, authorized = get_authorized_mirror_url(url, auth_header)
 
         parsed_url = urlparse(url)
         expected_url = f"{parsed_url.scheme}://mirror1.com{parsed_url.path}"
-        assert result == expected_url
-        # Check that requests.head was called with the modified URL
-        mock_head.assert_called_once_with(expected_url, timeout=5)
-
-    # Scenario where the first mirror fails, and the second returns a 200 status code
+        assert result_url == expected_url
+        assert response.status_code == 200
+        assert authorized is True
+        # Check that requests.head was called with the correct headers
+        mock_head.assert_called_once_with(
+            expected_url,
+            headers={"User-Agent": "KissCache", "Authorization": auth_header},
+            timeout=mock.ANY,
+        )
+    
+    # Scenario where the first mirror fails, and the second returns 200 status code
     with mock.patch("requests.head") as mock_head:
-        mock_head.side_effect = [mock.Mock(status_code=404), mock.Mock(status_code=200)]
+        mock_head.side_effect = [
+            mock.Mock(status_code=404),
+            mock.Mock(status_code=200),
+        ]
 
-        result = get_mirror_url(url)
+        result_url, response, authorized = get_authorized_mirror_url(url, auth_header)
+
+        expected_url = f"{parsed_url.scheme}://mirror2.com{parsed_url.path}"
+        assert result_url == expected_url
+        assert response.status_code == 200
+        assert authorized is True
+
+    # Scenario where no mirror1 is unauthorized (401 status code)
+    with mock.patch("requests.head") as mock_head:
+        mock_head.return_value = mock.Mock(status_code=401)
+
+        result_url, response, authorized = get_authorized_mirror_url(url, auth_header)
 
         parsed_url = urlparse(url)
-        expected_url = f"{parsed_url.scheme}://mirror2.com{parsed_url.path}"
-        assert result == expected_url
-        # Check that requests.head was called with the URL of the second mirror
-        mock_head.assert_any_call(
-            f"{parsed_url.scheme}://mirror2.com{parsed_url.path}", timeout=5
-        )
+        expected_url = f"{parsed_url.scheme}://mirror1.com{parsed_url.path}"
+        assert result_url == expected_url
+        assert response.status_code == 401
+        assert response["WWW-Authenticate"] == 'Basic realm="KissCache"'
+        assert authorized is False
 
-    # Scenario where no mirror works (all fail or return a non-200 status code)
+    # Scenario where no valid mirrors exist, and the original URL fails (404)
     with mock.patch("requests.head") as mock_head:
-        mock_head.side_effect = [mock.Mock(status_code=404), mock.Mock(status_code=500)]
+        mock_head.side_effect = [
+            mock.Mock(status_code=404),
+            mock.Mock(status_code=500),
+        ]
 
-        result = get_mirror_url(url)
-        # Verify that the result is None
-        assert result is None
+        result_url, response, authorized = get_authorized_mirror_url(url, auth_header)
+
+        assert result_url == url
+        assert response.status_code == 404
+        assert authorized is True  # Authorization is not the issue here

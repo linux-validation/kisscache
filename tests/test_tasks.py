@@ -43,6 +43,7 @@ def test_fetch(caplog, db, mocker, settings, tmpdir):
             assert headers == {
                 "Accept-Encoding": "",
                 "User-Agent": f"KissCache/{__version__}",
+                "Authorization": None,
             }
             assert timeout == settings.DOWNLOAD_TIMEOUT
             return Response()
@@ -52,8 +53,7 @@ def test_fetch(caplog, db, mocker, settings, tmpdir):
 
     mocker.patch("kiss_cache.tasks.requests_retry", requests_retry)
     mocker.patch("time.time", lambda: 0)
-
-    fetch("https://example.com")
+    fetch("https://example.com", None)
     assert (
         tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
     ).read_text(encoding="utf-8") == "hello worl"
@@ -103,6 +103,7 @@ def test_fetch_no_content_length(caplog, db, mocker, settings, tmpdir):
             assert headers == {
                 "Accept-Encoding": "",
                 "User-Agent": f"KissCache/{__version__}",
+                "Authorization": None,
             }
             assert timeout == settings.DOWNLOAD_TIMEOUT
             return Response()
@@ -112,8 +113,7 @@ def test_fetch_no_content_length(caplog, db, mocker, settings, tmpdir):
 
     mocker.patch("kiss_cache.tasks.requests_retry", requests_retry)
     mocker.patch("time.time", lambda: 0)
-
-    fetch("https://example.com")
+    fetch("https://example.com", None)
     assert (
         tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
     ).read_text(encoding="utf-8") == "hello worl"
@@ -132,7 +132,7 @@ def test_fetch_errors(caplog, db, mocker, settings, tmpdir):
     caplog.set_level(logging.DEBUG)
 
     # db object does not exist
-    fetch("https://example.com")
+    fetch("https://example.com", None)
     assert caplog.record_tuples == [
         ("kiss_cache.tasks", 20, "Fetching 'https://example.com'"),
         (
@@ -152,7 +152,7 @@ def test_fetch_errors(caplog, db, mocker, settings, tmpdir):
 
     Resource.objects.create(url="https://example.com")
     mocker.patch("pathlib.Path.mkdir", raising_mkdir)
-    fetch("https://example.com")
+    fetch("https://example.com", None)
     assert (
         Resource.objects.get(url="https://example.com").state == Resource.STATE_FINISHED
     )
@@ -188,6 +188,7 @@ def test_fetch_errors_2(caplog, db, mocker, settings, tmpdir):
             assert headers == {
                 "Accept-Encoding": "",
                 "User-Agent": f"KissCache/{__version__}",
+                "Authorization": None,
             }
             assert timeout == settings.DOWNLOAD_TIMEOUT
             raise requests.RequestException("Unable to download 'https://example.com'")
@@ -196,7 +197,7 @@ def test_fetch_errors_2(caplog, db, mocker, settings, tmpdir):
         return RequestRetry()
 
     mocker.patch("kiss_cache.tasks.requests_retry", requests_retry)
-    fetch("https://example.com")
+    fetch("https://example.com", None)
 
     assert (
         Resource.objects.get(url="https://example.com").state == Resource.STATE_FINISHED
@@ -229,6 +230,7 @@ def test_fetch_errors_3(caplog, db, mocker, settings, tmpdir):
             assert headers == {
                 "Accept-Encoding": "",
                 "User-Agent": f"KissCache/{__version__}",
+                "Authorization": None,
             }
             assert timeout == settings.DOWNLOAD_TIMEOUT
             return Response()
@@ -237,7 +239,7 @@ def test_fetch_errors_3(caplog, db, mocker, settings, tmpdir):
         return RequestRetry()
 
     mocker.patch("kiss_cache.tasks.requests_retry", requests_retry)
-    fetch("https://example.com")
+    fetch("https://example.com", None)
 
     assert (
         Resource.objects.get(url="https://example.com").state == Resource.STATE_FINISHED

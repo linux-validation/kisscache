@@ -37,7 +37,7 @@ from kiss_cache.utils import (
     check_client_ip,
     is_client_allowed,
     get_user_ip,
-    get_mirror_url,
+    get_authorized_mirror_url,
 )
 
 
@@ -188,10 +188,11 @@ def api_health(request):
 def api_fetch(request, filename=None):
     url = request.GET.get("url")
     ttl = request.GET.get("ttl", settings.DEFAULT_TTL)
+    auth_header = request.headers.get("Authorization", None)
 
-    mirror_url = get_mirror_url(url)
-    if mirror_url:
-        url = mirror_url
+    url, response, authorized = get_authorized_mirror_url(url, auth_header)
+    if not authorized:
+        return response
 
     if url and filename is None:
         # Take last part of url provided as parameter for Content-Disposition header
@@ -230,7 +231,7 @@ def api_fetch(request, filename=None):
         Resource.objects.filter(pk=res.pk).update(ttl=ttl)
 
         # Schedule the fetch task
-        fetch.delay(res.url)
+        fetch.delay(res.url, auth_header)
     else:
         # Set the TTL if the resulting date is earlier
         now = timezone.now()

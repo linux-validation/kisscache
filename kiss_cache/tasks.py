@@ -33,7 +33,7 @@ LOG = get_task_logger(__name__)
 
 
 @shared_task(ignore_result=True)
-def fetch(url):
+def fetch(url, auth_header):
     # TODO: should the resource be removed from the db if an exception is
     # raised (instead of setting a 50x status_code?)
     LOG.info("Fetching '%s'", url)
@@ -73,6 +73,7 @@ def fetch(url):
                 headers = {
                     "Accept-Encoding": "",
                     "User-Agent": f"KissCache/{__version__}",
+                    "Authorization": auth_header,
                 }
                 if size:
                     headers["Range"] = f"bytes={size}-"
