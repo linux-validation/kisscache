@@ -33,7 +33,7 @@ LOG = get_task_logger(__name__)
 
 
 @shared_task(ignore_result=True)
-def fetch(url):
+def fetch(url, extra_headers={}):
     # TODO: should the resource be removed from the db if an exception is
     # raised (instead of setting a 50x status_code?)
     LOG.info("Fetching '%s'", url)
@@ -77,6 +77,7 @@ def fetch(url):
                 if size:
                     headers["Range"] = f"bytes={size}-"
 
+                headers = {**headers, **extra_headers}
                 req = requests_retry().get(
                     res.url,
                     stream=True,
