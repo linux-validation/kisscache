@@ -1,0 +1,36 @@
+permissions:
+    contents: read
+    packages: write
+
+name: "KissCache docker build job"
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+
+jobs:
+  docker-build-generic:
+    runs-on: ubuntu-latest
+    container:
+      image: docker:24
+      env:
+        DOCKER_DRIVER: overlay2
+        DOCKER_BUILDKIT: 1
+    services:
+      dind:
+        image: docker:24-dind
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v6
+      - run: git config --global --add safe.directory $PWD
+      - run: ./.gitlab-ci/build/docker-${{ inputs.arch }}.sh setup
+        env:
+          CI_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          CI_REGISTRY_USER: ${{ github.actor }}
+          CI_REGISTRY: ghcr.io
+      - run: ./.gitlab-ci/build/docker-${{ inputs.arch }}.sh
+        env:
+          CI_REGISTRY_OVERRIDE: ghcr.io/${{ github.repository }}/kisscache-${{ inputs.arch }}-${{ github.ref_name }}
+          CI_COMMIT_TAG: ${{ github.ref_name }}

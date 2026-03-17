@@ -1,0 +1,18 @@
+permissions:
+    contents: read
+    checks: write
+    id-token: write
+    packages: write
+
+name: Run all KissCache container builds
+on: [workflow_dispatch, push, pull_request]
+jobs:
+  run-docker-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64]
+    uses: ./.github/workflows/generic-docker-build-job.yml
+    with:
+      arch: ${{ matrix.arch }}  
+
