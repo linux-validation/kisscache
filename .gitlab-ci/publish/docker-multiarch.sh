@@ -12,8 +12,9 @@ else
 
   # Default values
   CI_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE:-"registry.gitlab.com/linaro/kisscache"}
+  CI_REGISTRY_IMAGE="${CI_REGISTRY_OVERRIDE:-CI_REGISTRY_IMAGE}"
 
-  docker manifest create $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE/kisscache-amd64:latest $CI_REGISTRY_IMAGE/kisscache-arm64:latest
+  docker manifest create $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE-amd64:latest $CI_REGISTRY_IMAGE-arm64:latest
   # Push only for tags or master
   if [ "$CI_COMMIT_REF_SLUG" = "master" -o -n "$CI_COMMIT_TAG" ]
   then

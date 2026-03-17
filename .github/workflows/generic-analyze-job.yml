@@ -1,0 +1,21 @@
+permissions:
+    contents: read
+    checks: write
+    id-token: write
+
+name: "KissCache analyze job"
+on:
+  workflow_call:
+    inputs:
+      analyze:
+        required: true
+        type: string
+
+jobs:
+  analyze-generic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v6
+      - run: git config --global --add safe.directory $PWD
+      - run: docker run -v $PWD:/kisscache -w /kisscache debian:bookworm bash -c "./.gitlab-ci/analyze/${{ inputs.analyze }}.sh setup; ./.gitlab-ci/analyze/${{ inputs.analyze }}.sh"
