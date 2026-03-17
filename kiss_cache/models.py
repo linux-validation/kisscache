@@ -22,7 +22,7 @@ from django.conf import settings
 
 
 class Resource(models.Model):
-    url = models.URLField(unique=True, max_length=512)
+    url = models.URLField(unique=True, max_length=4096)
     created_at = models.DateTimeField(auto_now_add=True)
     ttl = models.IntegerField(default=60 * 60 * 24)
     content_length = models.BigIntegerField(blank=True, null=True)
