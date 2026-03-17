@@ -11,8 +11,38 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64]
+        include:
+        - arch: arm64
+          runner: ubuntu-24.04-arm
+        - arch: amd64
+          runner: ubuntu-latest
     uses: ./.github/workflows/generic-docker-build-job.yml
     with:
-      arch: ${{ matrix.arch }}  
+      arch: ${{ matrix.arch }}
+      runner: ${{ matrix.runner }}
+  publish-container:
+    needs: run-docker-build
+    runs-on: ubuntu-latest
+    container:
+      image: docker:24
+      env:
+        DOCKER_DRIVER: overlay2
+        DOCKER_BUILDKIT: 1
+    services:
+      dind:
+        image: docker:24-dind
+    steps:
+      - uses: linux-validation/alpine-arm64@v1
+      - name: checkout repo
+        uses: actions/checkout@v6
+      - run: git config --global --add safe.directory $PWD
+      - run: ./.gitlab-ci/publish/docker-multiarch.sh setup
+        env:
+          CI_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          CI_REGISTRY_USER: ${{ github.actor }}
+          CI_REGISTRY: ghcr.io
+      - run: ./.gitlab-ci/publish/docker-multiarch.sh
+        env:
+          CI_REGISTRY_IMAGE: ghcr.io/${{ github.repository }}/${{ github.ref_name }}
+          CI_COMMIT_TAG: ${{ github.ref_name }}
 

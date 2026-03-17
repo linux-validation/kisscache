@@ -14,7 +14,6 @@ else
 
   # Default values
   CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-"registry.gitlab.com/linaro/kisscache"}/kisscache-$ARCH"
-  CI_REGISTRY_IMAGE="${CI_REGISTRY_OVERRIDE:-CI_REGISTRY_IMAGE}"
 
   # Build the docker image
   # Unshallow the git repository to allow git describe to work

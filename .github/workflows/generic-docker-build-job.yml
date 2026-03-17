@@ -9,10 +9,13 @@ on:
       arch:
         required: true
         type: string
+      runner:
+        required: true
+        type: string
 
 jobs:
   docker-build-generic:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     container:
       image: docker:24
       env:
@@ -22,6 +25,7 @@ jobs:
       dind:
         image: docker:24-dind
     steps:
+      - uses: linux-validation/alpine-arm64@v1
       - name: checkout repo
         uses: actions/checkout@v6
       - run: git config --global --add safe.directory $PWD
@@ -32,5 +36,5 @@ jobs:
           CI_REGISTRY: ghcr.io
       - run: ./.gitlab-ci/build/docker-${{ inputs.arch }}.sh
         env:
-          CI_REGISTRY_OVERRIDE: ghcr.io/${{ github.repository }}/kisscache-${{ inputs.arch }}-${{ github.ref_name }}
+          CI_REGISTRY_IMAGE: ghcr.io/${{ github.repository }}/${{ github.ref_name }}
           CI_COMMIT_TAG: ${{ github.ref_name }}
