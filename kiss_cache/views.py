@@ -188,6 +188,15 @@ def api_health(request):
 def api_fetch(request, filename=None):
     url = request.GET.get("url")
     ttl = request.GET.get("ttl", settings.DEFAULT_TTL)
+    passheaders = request.GET.get("passheaders", settings.PASS_HEADERS)
+    passheaders = passheaders.split(",") if passheaders else []
+    reqheaders = dict(request.headers)
+    extra_headers = {}
+
+    for pheader in passheaders:
+        for rheader in reqheaders:
+            if rheader.casefold() == pheader.casefold():
+                extra_headers.update({rheader: reqheaders[rheader]})
 
     mirror_url = get_mirror_url(url)
     if mirror_url:
@@ -230,7 +239,7 @@ def api_fetch(request, filename=None):
         Resource.objects.filter(pk=res.pk).update(ttl=ttl)
 
         # Schedule the fetch task
-        fetch.delay(res.url)
+        fetch.delay(res.url, extra_headers)
     else:
         # Set the TTL if the resulting date is earlier
         now = timezone.now()
