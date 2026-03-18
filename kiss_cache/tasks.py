@@ -162,15 +162,16 @@ def fetch(url):
 
                 # Log the speed
                 end = time.time()
-                speed = "??"
+                speed = 0.0
                 with contextlib.suppress(ZeroDivisionError):
                     speed = "%0.2f" % round(size / (1024 * 1024 * (end - start)), 2)
                 LOG.info(
                     "%dMB downloaded in %0.2fs (%sMB/s)",
                     size / (1024 * 1024),
                     round(end - start, 2),
-                    speed,
+                    speed or "??",
                 )
+                Resource.objects.filter(pk=res.pk).update(downloaded_speed=speed)
             # Retry if kisscache was unable to download the full file
             if not force_retry:
                 if not res.content_length:
