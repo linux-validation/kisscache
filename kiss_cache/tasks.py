@@ -172,6 +172,7 @@ def fetch(url, extra_headers={}):
                     round(end - start, 2),
                     speed,
                 )
+                Resource.objects.filter(pk=res.pk).update(downloaded_speed=speed)
             # Retry if kisscache was unable to download the full file
             if not force_retry:
                 if not res.content_length:
