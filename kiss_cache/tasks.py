@@ -7,7 +7,6 @@
 #
 # SPDX-License-Identifier: MIT
 
-import contextlib
 from datetime import timedelta
 import logging
 import math
@@ -164,15 +163,20 @@ def fetch(url, extra_headers={}):
                 # Log the speed
                 end = time.time()
                 speed = "??"
-                with contextlib.suppress(ZeroDivisionError):
+                try:
                     speed = "%0.2f" % round(size / (1024 * 1024 * (end - start)), 2)
+                    downloaded_speed = speed
+                except ZeroDivisionError:
+                    downloaded_speed = 0
                 LOG.info(
                     "%dMB downloaded in %0.2fs (%sMB/s)",
                     size / (1024 * 1024),
                     round(end - start, 2),
                     speed,
                 )
-                Resource.objects.filter(pk=res.pk).update(downloaded_speed=speed)
+                Resource.objects.filter(pk=res.pk).update(
+                    downloaded_speed=downloaded_speed
+                )
             # Retry if kisscache was unable to download the full file
             if not force_retry:
                 if not res.content_length:
