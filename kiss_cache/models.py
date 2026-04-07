@@ -30,6 +30,7 @@ class Resource(models.Model):
     last_usage = models.DateTimeField(blank=True, null=True)
     usage = models.IntegerField(default=0)
     downloaded_speed = models.FloatField(default=0)
+    extra_headers = models.JSONField(default=dict)
 
     STATE_SCHEDULED, STATE_DOWNLOADING, STATE_FINISHED = range(3)
     STATE_CHOICES = (
