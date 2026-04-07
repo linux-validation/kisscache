@@ -48,6 +48,11 @@ CELERY_BEAT_MAX_LOOP_INTERVAL = 30
 # By default the instance is fully open
 ALLOWED_NETWORKS = []
 
+# Comma-separated list of HTTP Headers that KissCache will pass onto a fetch.
+# Defaults to empty: administrators must explicitly opt-in to forwarding
+# specific headers to avoid leaking auth headers to remote hosts.
+PASS_HEADERS = ""
+
 # Default quota of 5G
 RESOURCE_QUOTA = 5 * 1024 * 1024 * 1024
 # Automatically remove old resources when the quota usage is above this value
