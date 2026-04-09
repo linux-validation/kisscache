@@ -29,6 +29,7 @@ class Resource(models.Model):
     content_type = models.CharField(max_length=256, blank=True)
     last_usage = models.DateTimeField(blank=True, null=True)
     usage = models.IntegerField(default=0)
+    downloaded_speed = models.FloatField(default=0)
 
     STATE_SCHEDULED, STATE_DOWNLOADING, STATE_FINISHED = range(3)
     STATE_CHOICES = (
