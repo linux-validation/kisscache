@@ -74,7 +74,7 @@ def test_fetch(caplog, db, mocker, settings, tmpdir):
         ("kiss_cache.tasks", 20, "progress  80% (0MB)"),
         ("kiss_cache.tasks", 20, "progress  90% (0MB)"),
         ("kiss_cache.tasks", 20, "progress 100% (0MB)"),
-        ("kiss_cache.tasks", 20, "0MB downloaded in 0.00s (??MB/s)"),
+        ("kiss_cache.tasks", 20, "0MB downloaded in 0.00s (0.00MB/s)"),
     ]
 
 
@@ -124,7 +124,7 @@ def test_fetch_no_content_length(caplog, db, mocker, settings, tmpdir):
     assert Statistic.objects.get(stat=Statistic.STAT_DOWNLOAD).value == 10
     assert caplog.record_tuples == [
         ("kiss_cache.tasks", 20, "Fetching 'https://example.com'"),
-        ("kiss_cache.tasks", 20, "0MB downloaded in 0.00s (??MB/s)"),
+        ("kiss_cache.tasks", 20, "0MB downloaded in 0.00s (0.00MB/s)"),
     ]
 
 
