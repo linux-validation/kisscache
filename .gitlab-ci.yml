@@ -85,7 +85,7 @@ docker-amd64:
 docker-arm64:
   extends: .docker
   tags:
-   - saas-linux-medium-arm64
+   - saas-linux-small-arm64
 
 
 ###########
