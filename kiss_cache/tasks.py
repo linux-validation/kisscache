@@ -8,9 +8,10 @@
 # SPDX-License-Identifier: MIT
 
 import contextlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 import logging
-import math
+import os
 import pathlib
 import requests
 import time
@@ -32,10 +33,132 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 LOG = get_task_logger(__name__)
 
 
+def _base_headers(extra_headers):
+    # Only accept plain content (not gzipped) so that the Content-Length is
+    # known and range requests address the real bytes.
+    return {
+        "Accept-Encoding": "",
+        "User-Agent": f"KissCache/{__version__}",
+        **extra_headers,
+    }
+
+
+def _total_size(req):
+    """
+    Total size of the resource from the first (probe) response, or None.
+
+    A 206 answer carries the total in its Content-Range header ("bytes 0-N/M"),
+    otherwise we fall back to the Content-Length of a plain 200 answer.
+    """
+    if req.status_code == 206:
+        content_range = req.headers.get("Content-Range", "")
+        with contextlib.suppress(ValueError, IndexError):
+            return int(content_range.rsplit("/", 1)[1])
+    with contextlib.suppress(TypeError, ValueError):
+        return int(req.headers.get("Content-Length"))
+    return None
+
+
+def _connection_count(content_length, accept_ranges):
+    """Number of parallel connections to use for the download."""
+    if not accept_ranges or not content_length:
+        return 1
+    count = min(
+        settings.DOWNLOAD_CONCURRENCY,
+        content_length // settings.DOWNLOAD_MIN_SEGMENT_SIZE,
+    )
+    return max(1, count)
+
+
+def _segments(content_length, count):
+    """
+    Split the resource into byte ranges, one per connection.
+
+    A single connection downloads the whole resource (end is None), which also
+    covers the case where the content length is unknown.
+    """
+    if count <= 1:
+        return [(0, None)]
+    size = content_length // count
+    segments = []
+    start = 0
+    for i in range(count):
+        end = content_length - 1 if i == count - 1 else start + size - 1
+        segments.append((start, end))
+        start = end + 1
+    return segments
+
+
+def _watermark(segments, progress):
+    """Number of contiguous bytes available from the start of the file."""
+    watermark = 0
+    for i, (start, end) in enumerate(segments):
+        watermark = start + progress[i]
+        if end is None:
+            break
+        if progress[i] < end - start + 1:
+            break
+    return watermark
+
+
+def _consume_segment(url, req, segment, fd, progress, idx, results):
+    """Write a segment's response body at its offset in the file."""
+    start, end = segment
+    # The probe connection requests an open-ended range, so it may stream more
+    # than its segment: keep only the bytes this segment is responsible for.
+    limit = None if end is None else end - start + 1
+    try:
+        offset = start
+        written = 0
+        try:
+            for data in req.iter_content(
+                chunk_size=settings.DOWNLOAD_CHUNK_SIZE, decode_unicode=False
+            ):
+                if limit is not None and written + len(data) > limit:
+                    data = data[: limit - written]
+                os.pwrite(fd, data, offset)
+                offset += len(data)
+                written += len(data)
+                progress[idx] = written
+                if limit is not None and written >= limit:
+                    break
+        finally:
+            req.close()
+        results[idx] = 0
+    except requests.RequestException as exc:
+        LOG.error("Unable to fetch '%s'", url)
+        LOG.exception(exc)
+        results[idx] = 504
+    except Exception as exc:  # noqa: B902 - never let a worker die silently
+        LOG.error("Unable to fetch '%s'", url)
+        LOG.exception(exc)
+        results[idx] = 504
+
+
+def _fetch_segment(url, headers, segment, fd, progress, idx, results):
+    """Open a ranged connection for a segment and download it."""
+    start, end = segment
+    seg_headers = dict(headers)
+    seg_headers["Range"] = f"bytes={start}-{end}"
+    try:
+        req = requests_retry().get(
+            url, stream=True, headers=seg_headers, timeout=settings.DOWNLOAD_TIMEOUT
+        )
+    except requests.RequestException as exc:
+        LOG.error("Unable to connect to '%s'", url)
+        LOG.exception(exc)
+        results[idx] = 502
+        return
+    if req.status_code != 206:
+        LOG.error("'%s' returned %d", url, req.status_code)
+        req.close()
+        results[idx] = req.status_code
+        return
+    _consume_segment(url, req, segment, fd, progress, idx, results)
+
+
 @shared_task(ignore_result=True)
 def fetch(url, extra_headers={}):
-    # TODO: should the resource be removed from the db if an exception is
-    # raised (instead of setting a 50x status_code?)
     LOG.info("Fetching '%s'", url)
     # Grab the object from the database
     try:
@@ -57,172 +180,163 @@ def fetch(url, extra_headers={}):
         Statistic.failures(1)
         return
 
-    # Keep track of the total amount of data
-    size = 0
-    retries = 0
-    max_retries = settings.RESOURCE_PARTIAL_DOWLOAD_RETRIES
-    # TODO: make this idempotent to allow for task restart
     try:
-        while retries < max_retries:
-            # Download the resource
-            # * stream back the result
-            # * only accept plain content (not gzipped) so Content-Length is known
-            # * with a timeout
-            try:
-                # Use a range header if this is a retry
-                headers = {
-                    "Accept-Encoding": "",
-                    "User-Agent": f"KissCache/{__version__}",
-                }
-                if size:
-                    headers["Range"] = f"bytes={size}-"
-
-                headers = {**headers, **extra_headers}
-                req = requests_retry().get(
-                    res.url,
-                    stream=True,
-                    headers=headers,
-                    timeout=settings.DOWNLOAD_TIMEOUT,
-                )
-            except requests.RequestException as exc:
-                LOG.error("Unable to connect to '%s'", url)
-                LOG.exception(exc)
-                Resource.objects.filter(pk=res.pk).update(
-                    state=Resource.STATE_FINISHED, status_code=502
-                )
-                Statistic.failures(1)
-                return
-
-            # When retrying range requests should work, hence status_code is 206
-            if retries > 0 and size:
-                if req.status_code != 206:
-                    LOG.error("Unable to issue range requests when retrying")
-                    req.status_code = 502
-                else:
-                    req.status_code = 200
-
-            # Update the status code
-            if req.status_code != 200:
-                Resource.objects.filter(pk=res.pk).update(
-                    status_code=req.status_code, state=Resource.STATE_FINISHED
-                )
-                Statistic.failures(1)
-                LOG.error("'%s' returned %d", url, req.status_code)
-                req.close()
-                return
-            Resource.objects.filter(pk=res.pk).update(status_code=200)
-            # Set the headers
-            Resource.objects.filter(pk=res.pk).update(extra_headers=extra_headers)
-            res.refresh_from_db()
-
-            if retries == 0:
-                # Store Content-Length and Content-Type
-                Resource.objects.filter(pk=res.pk).update(
-                    content_length=req.headers.get("Content-Length"),
-                    content_type=req.headers.get("Content-Type", ""),
-                )
-                res.refresh_from_db()
-
-            # When retrying, append to the file
-            mode = "wb" if retries == 0 else "ab"
-            with res.open(mode=mode) as f_out:
-                # Informe the caller about the current state
-                Resource.objects.filter(pk=res.pk).update(
-                    state=Resource.STATE_DOWNLOADING
-                )
-                res.refresh_from_db()
-
-                # variables to log progress
-                last_logged_value = 0
-                start = time.time()
-
-                force_retry = False
-                try:
-                    # Loop on the data
-                    iterator = req.iter_content(
-                        chunk_size=settings.DOWNLOAD_CHUNK_SIZE, decode_unicode=False
-                    )
-                    for data in iterator:
-                        size += f_out.write(data)
-
-                        if res.content_length:
-                            percent = math.floor(size / float(res.content_length) * 100)
-                            if percent >= last_logged_value + 5:
-                                last_logged_value = percent
-                                LOG.info(
-                                    "progress %3d%% (%dMB)",
-                                    percent,
-                                    int(size / (1024 * 1024)),
-                                )
-                        else:
-                            if size >= last_logged_value + 25 * 1024 * 1024:
-                                last_logged_value = size
-                                LOG.info("progress %dMB", int(size / (1024 * 1024)))
-                except requests.RequestException as exc:
-                    LOG.error("Unable to fetch '%s'", url)
-                    LOG.exception(exc)
-                    force_retry = True
-
-                # Log the speed
-                end = time.time()
-                speed = 0.0
-                with contextlib.suppress(ZeroDivisionError):
-                    speed = round(size / (1024 * 1024 * (end - start)), 2)
-                LOG.info(
-                    "%dMB downloaded in %0.2fs (%0.2fMB/s)",
-                    size / (1024 * 1024),
-                    round(end - start, 2),
-                    speed,
-                )
-                Resource.objects.filter(pk=res.pk).update(downloaded_speed=speed)
-            # Retry if kisscache was unable to download the full file
-            if not force_retry:
-                if not res.content_length:
-                    break
-                if res.content_length == size:
-                    break
-
-            LOG.warning(
-                "The total size (%d) is not equal to the Content-Length (%d)",
-                size,
-                res.content_length,
-            )
-            LOG.warning("Retrying (%d/%d) after 5 seconds", retries, max_retries)
-            time.sleep(5)
-            retries += 1
-
-    except Exception as exc:
+        _download(res, extra_headers)
+    except Exception as exc:  # noqa: B902 - mark the resource as failed and move on
         LOG.error("Unable to fetch '%s'", url)
         LOG.exception(exc)
         Resource.objects.filter(pk=res.pk).update(
             state=Resource.STATE_FINISHED, status_code=504
         )
         Statistic.failures(1)
-        return
 
-    # Check or save the size
-    if res.content_length:
-        if res.content_length != size:
+
+def _download(res, extra_headers):
+    url = res.url
+    base_headers = _base_headers(extra_headers)
+    path = str(pathlib.Path(settings.DOWNLOAD_PATH) / res.path)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        # Open the first connection with an open-ended range request. This both
+        # downloads the first segment and probes whether the server supports
+        # range requests (206) and what the total size is. Servers that do not
+        # support ranges answer 200 with the full body, which is then downloaded
+        # over this single connection.
+        probe_headers = dict(base_headers)
+        if settings.DOWNLOAD_CONCURRENCY > 1:
+            probe_headers["Range"] = "bytes=0-"
+        try:
+            req0 = requests_retry().get(
+                url,
+                stream=True,
+                headers=probe_headers,
+                timeout=settings.DOWNLOAD_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            LOG.error("Unable to connect to '%s'", url)
+            LOG.exception(exc)
+            Resource.objects.filter(pk=res.pk).update(
+                state=Resource.STATE_FINISHED, status_code=502
+            )
+            Statistic.failures(1)
+            return
+
+        if req0.status_code not in (200, 206):
+            LOG.error("'%s' returned %d", url, req0.status_code)
+            req0.close()
+            Resource.objects.filter(pk=res.pk).update(
+                state=Resource.STATE_FINISHED, status_code=req0.status_code
+            )
+            Statistic.failures(1)
+            return
+
+        accept_ranges = req0.status_code == 206
+        content_type = req0.headers.get("Content-Type", "")
+        total = _total_size(req0)
+        count = _connection_count(total, accept_ranges)
+        segments = _segments(total, count)
+        progress = [0] * len(segments)
+        results = [None] * len(segments)
+
+        # Pre-allocate the file so segments can be written at their offsets.
+        if count > 1 and total:
+            os.ftruncate(fd, total)
+
+        # Inform the callers that the download started so they can stream it.
+        Resource.objects.filter(pk=res.pk).update(
+            content_length=total,
+            content_type=content_type or "",
+            status_code=200,
+            state=Resource.STATE_DOWNLOADING,
+            downloaded=0,
+            extra_headers=extra_headers,
+        )
+
+        start = time.time()
+        with ThreadPoolExecutor(max_workers=len(segments)) as pool:
+            # The first segment is served by the probe connection; the remaining
+            # segments open their own ranged connections.
+            pool.submit(
+                _consume_segment, url, req0, segments[0], fd, progress, 0, results
+            )
+            for i in range(1, len(segments)):
+                pool.submit(
+                    _fetch_segment,
+                    url,
+                    base_headers,
+                    segments[i],
+                    fd,
+                    progress,
+                    i,
+                    results,
+                )
+            # Persist the contiguous watermark while the segments download so
+            # that streaming clients can follow the progress. Only the main
+            # thread touches the database; the workers only do network/file I/O.
+            last = 0
+            while any(result is None for result in results):
+                watermark = _watermark(segments, progress)
+                if watermark != last:
+                    Resource.objects.filter(pk=res.pk).update(downloaded=watermark)
+                    last = watermark
+                time.sleep(settings.DOWNLOAD_WATERMARK_INTERVAL)
+
+        size = sum(progress)
+        watermark = _watermark(segments, progress)
+        elapsed = time.time() - start
+        speed = 0.0
+        with contextlib.suppress(ZeroDivisionError):
+            speed = round(size / (1024 * 1024 * elapsed), 2)
+
+        # A non-zero result is the HTTP status code (or 50x) of a failed segment.
+        failure = next((result for result in results if result), 0)
+        if failure:
+            # Drop the not-yet-downloaded holes so a streaming client errors out
+            # instead of receiving zeroes.
+            os.ftruncate(fd, watermark)
+            Resource.objects.filter(pk=res.pk).update(
+                state=Resource.STATE_FINISHED,
+                status_code=failure,
+                downloaded=watermark,
+                downloaded_speed=speed,
+            )
+            Statistic.failures(1)
+            return
+
+        if total and total != size:
             LOG.error(
                 "The total size (%d) is not equal to the Content-Length (%d)",
                 size,
-                res.content_length,
+                total,
             )
-            # Set the status_code to 502 so it will be removed soon
+            os.ftruncate(fd, watermark)
             Resource.objects.filter(pk=res.pk).update(
-                state=Resource.STATE_FINISHED, status_code=504
+                state=Resource.STATE_FINISHED,
+                status_code=504,
+                downloaded=watermark,
+                downloaded_speed=speed,
             )
             Statistic.download(size)
             Statistic.failures(1)
-    else:
-        Resource.objects.filter(pk=res.pk).update(content_length=size)
+            return
 
-    # Update the statistics
-    Statistic.download(size)
-    Statistic.successes(1)
-
-    # Mark the task as done
-    Resource.objects.filter(pk=res.pk).update(state=Resource.STATE_FINISHED)
+        LOG.info(
+            "%dMB downloaded in %0.2fs (%0.2fMB/s)",
+            size / (1024 * 1024),
+            round(elapsed, 2),
+            speed,
+        )
+        Statistic.download(size)
+        Statistic.successes(1)
+        Resource.objects.filter(pk=res.pk).update(
+            state=Resource.STATE_FINISHED,
+            content_length=size,
+            content_type=content_type or "",
+            downloaded=size,
+            downloaded_speed=speed,
+        )
+    finally:
+        os.close(fd)
 
 
 @shared_task(ignore_result=True)

@@ -292,6 +292,7 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
             state=Resource.STATE_DOWNLOADING,
             status_code=200,
             content_length=12,
+            downloaded=12,
             content_type="text/html; charset=UTF-8",
         )
         path = Resource.objects.get(url=URL).path

@@ -31,6 +31,11 @@ class Resource(models.Model):
     usage = models.IntegerField(default=0)
     downloaded_speed = models.FloatField(default=0)
     extra_headers = models.JSONField(default=dict)
+    # Number of contiguous bytes available from the start of the file. A
+    # resource may be downloaded over several parallel connections that write
+    # the pre-allocated file at arbitrary offsets, so streaming clients must
+    # only read up to this watermark to avoid reading not-yet-downloaded holes.
+    downloaded = models.BigIntegerField(default=0)
 
     STATE_SCHEDULED, STATE_DOWNLOADING, STATE_FINISHED = range(3)
     STATE_CHOICES = (
@@ -126,12 +131,15 @@ class Resource(models.Model):
         # file won't be removed by the OS until the file descriptor is removed.
         with self.open("rb") as f_in:
             while self.state != Resource.STATE_FINISHED:
-                # Send as most data as possible
-                data = f_in.read()
-                while data:
+                # Only send the contiguous bytes that have been downloaded so
+                # far. The file may be pre-allocated to its full size with
+                # not-yet-downloaded holes, hence the cap at "downloaded".
+                while current_length < self.downloaded:
+                    data = f_in.read(self.downloaded - current_length)
+                    if not data:
+                        break
                     current_length += len(data)
                     yield data
-                    data = f_in.read()
 
                 # Refresh from database
                 try:
@@ -143,7 +151,9 @@ class Resource(models.Model):
                     self.state = Resource.STATE_FINISHED
                     deleted = True
 
-            # Send the remaining data
+            # The resource is finished: the file is now fully written (on
+            # success) or truncated to the valid prefix (on failure), so it is
+            # safe to send the remaining data up to EOF.
             data = f_in.read()
             while data:
                 current_length += len(data)

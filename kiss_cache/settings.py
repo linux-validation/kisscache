@@ -25,6 +25,19 @@ DOWNLOAD_PATH = "/var/cache/kiss-cache"
 # Download 1kB by 1kB
 DOWNLOAD_CHUNK_SIZE = 1024
 
+# Number of parallel connections used to download a resource. KissCache always
+# downloads in parallel and automatically falls back to a single connection when
+# the remote server does not support range requests, the content length is
+# unknown, or the resource is too small. Set to 1 to disable parallel downloads.
+DOWNLOAD_CONCURRENCY = 30
+# A resource is split into at most content_length // DOWNLOAD_MIN_SEGMENT_SIZE
+# connections, so resources smaller than this are downloaded over a single
+# connection.
+DOWNLOAD_MIN_SEGMENT_SIZE = 16 * 1024 * 1024
+# Interval (in seconds) at which the contiguous download watermark is persisted
+# so that streaming clients can follow the download progress.
+DOWNLOAD_WATERMARK_INTERVAL = 1
+
 # By default, keep the resources for 10 days
 DEFAULT_TTL = "10d"
 
@@ -58,9 +71,6 @@ RESOURCE_QUOTA = 5 * 1024 * 1024 * 1024
 RESOURCE_QUOTA_AUTO_CLEAN = 75
 # Only consider resources that where not used for N seconds
 RESOURCE_QUOTA_AUTO_CLEAN_DELAY = 3600
-
-# Partial download retries
-RESOURCE_PARTIAL_DOWLOAD_RETRIES = 10
 
 # Use the apache2 xsendfile module
 USE_XSENDFILE = True

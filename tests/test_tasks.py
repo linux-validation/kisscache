@@ -19,8 +19,11 @@ from kiss_cache.tasks import expire, fetch
 
 
 def test_fetch(caplog, db, mocker, settings, tmpdir):
+    # The remote server does not support HEAD/ranges, so the download falls
+    # back to a single plain connection.
     caplog.set_level(logging.DEBUG)
     settings.DOWNLOAD_PATH = str(tmpdir)
+    settings.DOWNLOAD_WATERMARK_INTERVAL = 0
 
     Resource.objects.create(url="https://example.com")
 
@@ -43,6 +46,7 @@ def test_fetch(caplog, db, mocker, settings, tmpdir):
             assert headers == {
                 "Accept-Encoding": "",
                 "User-Agent": f"KissCache/{__version__}",
+                "Range": "bytes=0-",
             }
             assert timeout == settings.DOWNLOAD_TIMEOUT
             return Response()
@@ -61,26 +65,15 @@ def test_fetch(caplog, db, mocker, settings, tmpdir):
     assert res.state == Resource.STATE_FINISHED
     assert res.content_type == "text/html; charset=UTF-8"
     assert res.content_length == 10
+    assert res.downloaded == 10
     assert Statistic.objects.get(stat=Statistic.STAT_DOWNLOAD).value == 10
-    assert caplog.record_tuples == [
-        ("kiss_cache.tasks", 20, "Fetching 'https://example.com'"),
-        ("kiss_cache.tasks", 20, "progress  10% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress  20% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress  30% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress  40% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress  50% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress  60% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress  70% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress  80% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress  90% (0MB)"),
-        ("kiss_cache.tasks", 20, "progress 100% (0MB)"),
-        ("kiss_cache.tasks", 20, "0MB downloaded in 0.00s (0.00MB/s)"),
-    ]
+    assert Statistic.objects.get(stat=Statistic.STAT_SUCCESSES).value == 1
 
 
 def test_fetch_no_content_length(caplog, db, mocker, settings, tmpdir):
     caplog.set_level(logging.DEBUG)
     settings.DOWNLOAD_PATH = str(tmpdir)
+    settings.DOWNLOAD_WATERMARK_INTERVAL = 0
 
     Resource.objects.create(url="https://example.com")
 
@@ -103,6 +96,7 @@ def test_fetch_no_content_length(caplog, db, mocker, settings, tmpdir):
             assert headers == {
                 "Accept-Encoding": "",
                 "User-Agent": f"KissCache/{__version__}",
+                "Range": "bytes=0-",
             }
             assert timeout == settings.DOWNLOAD_TIMEOUT
             return Response()
@@ -120,12 +114,156 @@ def test_fetch_no_content_length(caplog, db, mocker, settings, tmpdir):
     res = Resource.objects.get(url="https://example.com")
     assert res.state == Resource.STATE_FINISHED
     assert res.content_type == "text/html; charset=UTF-8"
+    # The content length is unknown up front and resolved from the downloaded size.
     assert res.content_length == 10
+    assert res.downloaded == 10
     assert Statistic.objects.get(stat=Statistic.STAT_DOWNLOAD).value == 10
-    assert caplog.record_tuples == [
-        ("kiss_cache.tasks", 20, "Fetching 'https://example.com'"),
-        ("kiss_cache.tasks", 20, "0MB downloaded in 0.00s (0.00MB/s)"),
-    ]
+
+
+def test_fetch_parallel(caplog, db, mocker, settings, tmpdir):
+    # The remote server supports range requests, so the download is split into
+    # several parallel connections.
+    caplog.set_level(logging.DEBUG)
+    settings.DOWNLOAD_PATH = str(tmpdir)
+    settings.DOWNLOAD_CONCURRENCY = 2
+    settings.DOWNLOAD_MIN_SEGMENT_SIZE = 1
+    settings.DOWNLOAD_WATERMARK_INTERVAL = 0
+
+    Resource.objects.create(url="https://example.com")
+
+    CONTENT = b"hello worl"
+
+    class GetResponse:
+        def __init__(self, data, headers):
+            self._data = data
+            self.status_code = 206
+            self.headers = headers
+
+        def iter_content(self, chunk_size, decode_unicode):
+            assert chunk_size == settings.DOWNLOAD_CHUNK_SIZE
+            assert decode_unicode is False
+            return [self._data[i : i + 1] for i in range(len(self._data))]
+
+        def close(self):
+            pass
+
+    class RequestRetry:
+        def get(self, url, stream, headers, timeout):
+            assert url == "https://example.com"
+            assert stream is True
+            rang = headers["Range"][len("bytes=") :]
+            if rang == "0-":
+                # Probe connection: open-ended range. The server answers with a
+                # 206 carrying the total size and streams the whole body; only
+                # the first segment is kept.
+                return GetResponse(
+                    CONTENT,
+                    {
+                        "Content-Range": f"bytes 0-{len(CONTENT) - 1}/{len(CONTENT)}",
+                        "Content-Type": "application/octet-stream",
+                    },
+                )
+            start, end = rang.split("-")
+            return GetResponse(CONTENT[int(start) : int(end) + 1], {})
+
+    mocker.patch("kiss_cache.tasks.requests_retry", lambda: RequestRetry())
+    mocker.patch("time.time", lambda: 0)
+
+    fetch("https://example.com")
+    assert (
+        tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
+    ).read_text(encoding="utf-8") == CONTENT.decode("utf-8")
+    res = Resource.objects.get(url="https://example.com")
+    assert res.state == Resource.STATE_FINISHED
+    assert res.content_type == "application/octet-stream"
+    assert res.content_length == 10
+    assert res.downloaded == 10
+    assert Statistic.objects.get(stat=Statistic.STAT_DOWNLOAD).value == 10
+    assert Statistic.objects.get(stat=Statistic.STAT_SUCCESSES).value == 1
+
+
+def test_fetch_parallel_segment_error(caplog, db, mocker, settings, tmpdir):
+    # A secondary segment fails: the resource is marked as failed and the file
+    # is truncated to the contiguous prefix that was downloaded.
+    caplog.set_level(logging.DEBUG)
+    settings.DOWNLOAD_PATH = str(tmpdir)
+    settings.DOWNLOAD_CONCURRENCY = 2
+    settings.DOWNLOAD_MIN_SEGMENT_SIZE = 1
+    settings.DOWNLOAD_WATERMARK_INTERVAL = 0
+
+    Resource.objects.create(url="https://example.com")
+
+    CONTENT = b"hello worl"
+
+    class GetResponse:
+        def __init__(self, status, data, headers):
+            self.status_code = status
+            self._data = data
+            self.headers = headers
+
+        def iter_content(self, chunk_size, decode_unicode):
+            return [self._data[i : i + 1] for i in range(len(self._data))]
+
+        def close(self):
+            pass
+
+    class RequestRetry:
+        def get(self, url, stream, headers, timeout):
+            rang = headers["Range"][len("bytes=") :]
+            if rang == "0-":
+                return GetResponse(
+                    206,
+                    CONTENT,
+                    {"Content-Range": f"bytes 0-{len(CONTENT) - 1}/{len(CONTENT)}"},
+                )
+            # The second segment fails.
+            return GetResponse(404, b"", {})
+
+    mocker.patch("kiss_cache.tasks.requests_retry", lambda: RequestRetry())
+    mocker.patch("time.time", lambda: 0)
+
+    fetch("https://example.com")
+    res = Resource.objects.get(url="https://example.com")
+    assert res.state == Resource.STATE_FINISHED
+    assert res.status_code == 404
+    # Only the first contiguous segment is kept.
+    assert res.downloaded == 5
+    assert (
+        tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
+    ).read_text(encoding="utf-8") == "hello"
+    assert Statistic.objects.get(stat=Statistic.STAT_FAILURES).value == 1
+
+
+def test_fetch_size_mismatch(caplog, db, mocker, settings, tmpdir):
+    # The server advertises a larger size than it actually streams.
+    caplog.set_level(logging.DEBUG)
+    settings.DOWNLOAD_PATH = str(tmpdir)
+    settings.DOWNLOAD_WATERMARK_INTERVAL = 0
+
+    Resource.objects.create(url="https://example.com")
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Length": "11", "Content-Type": "text/plain"}
+
+        def iter_content(self, chunk_size, decode_unicode):
+            return [b"h", b"e", b"l", b"l", b"o", b" ", b"w", b"o", b"r", b"l"]
+
+        def close(self):
+            pass
+
+    class RequestRetry:
+        def get(self, url, stream, headers, timeout):
+            return Response()
+
+    mocker.patch("kiss_cache.tasks.requests_retry", lambda: RequestRetry())
+    mocker.patch("time.time", lambda: 0)
+
+    fetch("https://example.com")
+    res = Resource.objects.get(url="https://example.com")
+    assert res.state == Resource.STATE_FINISHED
+    assert res.status_code == 504
+    assert Statistic.objects.get(stat=Statistic.STAT_FAILURES).value == 1
 
 
 def test_fetch_errors(caplog, db, mocker, settings, tmpdir):
@@ -180,6 +318,7 @@ def test_fetch_errors_2(caplog, db, mocker, settings, tmpdir):
     # Unable to download
     Resource.objects.create(url="https://example.com")
     settings.DOWNLOAD_PATH = str(tmpdir)
+    settings.DOWNLOAD_WATERMARK_INTERVAL = 0
 
     class RequestRetry:
         def get(self, url, stream, headers, timeout):
@@ -188,6 +327,7 @@ def test_fetch_errors_2(caplog, db, mocker, settings, tmpdir):
             assert headers == {
                 "Accept-Encoding": "",
                 "User-Agent": f"KissCache/{__version__}",
+                "Range": "bytes=0-",
             }
             assert timeout == settings.DOWNLOAD_TIMEOUT
             raise requests.RequestException("Unable to download 'https://example.com'")
@@ -215,6 +355,7 @@ def test_fetch_errors_3(caplog, db, mocker, settings, tmpdir):
     # Unable to download
     Resource.objects.create(url="https://example.com")
     settings.DOWNLOAD_PATH = str(tmpdir)
+    settings.DOWNLOAD_WATERMARK_INTERVAL = 0
 
     class Response:
         status_code = 404
@@ -229,6 +370,7 @@ def test_fetch_errors_3(caplog, db, mocker, settings, tmpdir):
             assert headers == {
                 "Accept-Encoding": "",
                 "User-Agent": f"KissCache/{__version__}",
+                "Range": "bytes=0-",
             }
             assert timeout == settings.DOWNLOAD_TIMEOUT
             return Response()
