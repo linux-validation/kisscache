@@ -47,6 +47,7 @@
         <button class="btn btn-outline-secondary" type="button" id="cache-button" onclick="generate()">generate</button>
         <button class="btn btn-outline-success" type="button" id="fetch-button" onclick="fetch()">fetch</button>
         <button class="btn btn-outline-success" type="button" id="download-button" onclick="download()" style="display: none;">download</button>
+        <button class="btn btn-outline-danger" type="button" id="delete-button" onclick="del()">delete</button>
       </div>
     </div>
   </div>
@@ -94,6 +95,25 @@ function fetch() {
 function download() {
   var uri = document.getElementById("cache").value;
   window.location = uri;
+}
+
+function del() {
+  var uri = document.getElementById("cache").value;
+  var res = "{{ delete_url }}?url=" + encodeURIComponent(uri);
+  // Use XMLHttpRequest as the native fetch() is shadowed by the function above.
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", res);
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      alert("Deleted from cache:\n" + uri);
+    } else if (xhr.status === 404) {
+      alert("Not cached:\n" + uri);
+    } else {
+      alert("Unable to delete (HTTP " + xhr.status + "):\n" + uri);
+    }
+  };
+  xhr.onerror = function() { alert("Request failed:\n" + uri); };
+  xhr.send();
 }
 
 var input = document.getElementById("cache");
