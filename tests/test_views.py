@@ -316,6 +316,38 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
     assert next(ret.streaming_content) == b"Hello world!"
 
 
+def test_api_delete(client, db, settings, tmpdir):
+    URL = "https://example.com"
+    settings.DOWNLOAD_PATH = str(tmpdir)
+
+    res = Resource.objects.create(
+        url=URL,
+        state=Resource.STATE_FINISHED,
+        status_code=200,
+        content_length=5,
+    )
+    (tmpdir / "10").mkdir()
+    fpath = (
+        tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
+    )
+    fpath.write_text("hello", encoding="utf-8")
+    assert fpath.exists()
+
+    # Missing url
+    ret = client.get(reverse("api.delete"))
+    assert ret.status_code == 400
+
+    # Unknown resource
+    ret = client.get(f"{reverse('api.delete')}?url=https://example.com/missing")
+    assert ret.status_code == 404
+
+    # Delete the resource: the database row and the file are both removed
+    ret = client.get(f"{reverse('api.delete')}?url={URL}")
+    assert ret.status_code == 200
+    assert Resource.objects.filter(url=URL).count() == 0
+    assert not fpath.exists()
+
+
 def test_api_fetch_errors(client, db, mocker):
     URL = "https://example.com"
 
