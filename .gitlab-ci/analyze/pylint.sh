@@ -19,8 +19,9 @@ else
   #  R0201: Method could be a function
   #  R0401: Cyclic import (%s -> %s)
   # Enabled:
+  #  W0102: Dangerous default value %s as argument (e.g. a mutable {} / []).
   #  W0404: Reimport %r (imported line %s) Used when a module is reimported multiple times.
   #  W1505: Using deprecated method warn()
   #  W0611: Unused %s Used when an imported module or variable is not used.
-  pylint --disable=all --enable=elif,exceptions,stdlib,imports,variables,string,string_constant,logging,newstyle,classes --disable=C0411,C0412,E0401,E0611,R0201,R0401,W --enable=W0404,W1505,W0611 kiss_cache
+  pylint --disable=all --enable=elif,exceptions,stdlib,imports,variables,string,string_constant,logging,newstyle,classes --disable=C0411,C0412,E0401,E0611,R0201,R0401,W --enable=W0102,W0404,W1505,W0611 kiss_cache
 fi
