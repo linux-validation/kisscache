@@ -172,14 +172,14 @@ def resources(request, page=1, state="successes"):
     )
 
 
-class HttpResponseServieUnavailable(HttpResponse):
+class HttpResponseServiceUnavailable(HttpResponse):
     status_code = 503
 
 
 @require_safe
 def api_health(request):
     if pathlib.Path(settings.SHUTDOWN_PATH).exists():
-        return HttpResponseServieUnavailable("Graceful shutdown")
+        return HttpResponseServiceUnavailable("Graceful shutdown")
     return HttpResponse("ok")
 
 
