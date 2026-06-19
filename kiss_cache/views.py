@@ -47,6 +47,7 @@ def index(request):
         "kiss_cache/index.html",
         {
             "api_url": request.build_absolute_uri(reverse("api.fetch")),
+            "delete_url": request.build_absolute_uri(reverse("api.delete")),
             "version": __version__,
         },
     )
@@ -61,6 +62,7 @@ def help(request):
             "user_ip": get_user_ip(request),
             "user_ip_allowed": is_client_allowed(request),
             "api_url": request.build_absolute_uri(reverse("api.fetch")),
+            "delete_url": request.build_absolute_uri(reverse("api.delete")),
             "XSENDFILE_BACKEND": settings.XSENDFILE_BACKEND,
         },
     )
@@ -181,6 +183,23 @@ def api_health(request):
     if pathlib.Path(settings.SHUTDOWN_PATH).exists():
         return HttpResponseServiceUnavailable("Graceful shutdown")
     return HttpResponse("ok")
+
+
+@check_client_ip
+@require_safe
+def api_delete(request):
+    url = request.GET.get("url")
+    if url is None:
+        return HttpResponseBadRequest("'url' should be specified")
+
+    try:
+        res = Resource.objects.get(url=url)
+    except Resource.DoesNotExist:
+        raise Http404()
+
+    # Deleting the resource also removes the underlying file (see signals).
+    res.delete()
+    return HttpResponse("Resource deleted")
 
 
 @check_client_ip
