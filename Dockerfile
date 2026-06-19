@@ -1,9 +1,10 @@
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 LABEL maintainer="Rémi Duraffort <remi.duraffort@linaro.org>"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PKG_DEPS="\
+  adduser \
   gunicorn \
   libjs-jquery \
   nginx \
@@ -21,11 +22,10 @@ ENV PKG_DEPS="\
 "
 
 # Install dependencies
-RUN echo 'deb http://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/backports.list && \
-    mkdir -p /usr/share/man/man1 /usr/share/man/man7 && \
-    apt update -q=2 && \
-    apt full-upgrade -q=2 --yes && \
-    apt install -q=2 --yes --no-install-recommends ${PKG_DEPS} && \
+RUN mkdir -p /usr/share/man/man1 /usr/share/man/man7 && \
+    apt-get update -q=2 && \
+    apt-get full-upgrade -q=2 --yes && \
+    apt-get install -q=2 --yes --no-install-recommends ${PKG_DEPS} && \
     # Drop default nginx site
     rm /etc/nginx/sites-enabled/default && \
     # Cleanup
