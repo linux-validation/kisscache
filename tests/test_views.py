@@ -210,7 +210,7 @@ def test_api_health(client, mocker, settings, tmpdir):
 def test_api_fetch(client, db, mocker, settings, tmpdir):
     URL = "https://example.com"
 
-    def mocked_fetch(url):
+    def mocked_fetch(url, extra_headers):
         assert url == URL
         Resource.objects.filter(url=URL).update(
             state=Resource.STATE_FINISHED,
@@ -286,7 +286,7 @@ def test_api_fetch(client, db, mocker, settings, tmpdir):
 def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
     URL = "https://example.com"
 
-    def mocked_fetch(url):
+    def mocked_fetch(url, extra_headers):
         assert url == URL
         Resource.objects.filter(url=URL).update(
             state=Resource.STATE_DOWNLOADING,
