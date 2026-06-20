@@ -50,3 +50,9 @@ lint.isort.force-single-line = true
 
 [tool.pyproject-fmt]
 keep_full_version = true
+
+[tool.bandit]
+skips = [
+  "B308", # blacklist_calls mark_safe
+  "B703", # django_mark_safe potential XSS on mark_safe function
+]
