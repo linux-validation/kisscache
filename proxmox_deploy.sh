@@ -14,7 +14,7 @@ usage() {
     echo "Available environment variables:"
     echo "  CONTAINER_ID    : LXC Container ID (default: 110)"
     echo "  HOSTNAME        : Hostname for the LXC container (default: kisscache-lxc)"
-    echo "  TEMPLATE        : LXC container template (default: local:vztmpl/debian-11-standard_11.7-1_amd64.tar.zst)"
+    echo "  TEMPLATE        : LXC container template (default: local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst)"
     echo "  STORAGE         : Proxmox storage pool (default: local-zfs)"
     echo "  PASSWORD        : Root password for the LXC container (default: yourpassword)"
     echo "  CPU_CORES       : Number of CPU cores for the container (default: 2)"
@@ -42,7 +42,7 @@ fi
 # Set default values for environment variables
 CONTAINER_ID=${CONTAINER_ID:-110}           # LXC Container ID (default: 110)
 HOSTNAME=${HOSTNAME:-"kisscache-lxc"}       # LXC Hostname (default: kisscache-lxc)
-TEMPLATE=${TEMPLATE:-"local:vztmpl/debian-11-standard_11.7-1_amd64.tar.zst"} # Debian template path
+TEMPLATE=${TEMPLATE:-"local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst"} # Debian template path
 STORAGE=${STORAGE:-"local-zfs"}             # Storage pool (default: local-zfs)
 PASSWORD=${PASSWORD:-"yourpassword"}        # Root password for LXC
 CPU_CORES=${CPU_CORES:-2}                   # Number of CPU cores (default: 2)
@@ -114,15 +114,18 @@ start_container() {
     pct start $CONTAINER_ID
 }
 
-# Step 6: Install Docker and Docker Compose inside the container
+# Step 6: Install Docker and Docker Compose plugin inside the container
 install_docker() {
-    log "Installing Docker and Docker Compose inside the container..."
-    pct exec $CONTAINER_ID -- bash -c "apt update && apt install -y apt-transport-https ca-certificates curl gnupg2 git software-properties-common && \
-        curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - && \
-        echo \"deb [arch=amd64] https://download.docker.com/linux/debian bullseye stable\" > /etc/apt/sources.list.d/docker.list && \
-        apt update && apt install -y docker-ce=5:20.10.17~3-0~debian-bullseye docker-ce-cli=5:20.10.17~3-0~debian-bullseye containerd.io && \
-        curl -L \"https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose && \
-        chmod +x /usr/local/bin/docker-compose && ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose"
+    log "Installing Docker and Docker Compose plugin inside the container..."
+    pct exec $CONTAINER_ID -- bash -c "apt update && apt install -y ca-certificates curl && \
+        curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+        echo \"Types: deb\" > /etc/apt/sources.list.d/docker.sources && \
+        echo \"URIs: https://download.docker.com/linux/debian\" >> /etc/apt/sources.list.d/docker.sources && \
+        echo \"Suites: trixie\" >> /etc/apt/sources.list.d/docker.sources && \
+        echo \"Components: stable\" >> /etc/apt/sources.list.d/docker.sources && \
+        echo \"Architectures: amd64\" >> /etc/apt/sources.list.d/docker.sources && \
+        echo \"Signed-By: /etc/apt/keyrings/docker.asc\" >> /etc/apt/sources.list.d/docker.sources && \
+        apt update && apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
 }
 
 # Step 7: Clone the Git repository and bring up Docker Compose
@@ -131,7 +134,7 @@ setup_kisscache() {
     pct exec $CONTAINER_ID -- bash -c "git clone -b $BRANCH $GIT_REPO /app/kisscache"
     
     log "Starting Docker Compose services from the cloned repository..."
-    pct exec $CONTAINER_ID -- bash -c "cd /app/kisscache && docker-compose up -d"
+    pct exec $CONTAINER_ID -- bash -c "cd /app/kisscache && docker compose up -d"
 }
 
 # Main execution flow
