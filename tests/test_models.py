@@ -242,7 +242,7 @@ def test_create_mirror():
 def test_get_preferred_mirrors():
     # Créer une instance de Mirror
     mirror = Mirror.objects.create(
-        url_pattern=r"http(s)?:\/\/miror.*.com\/.*",
+        url_pattern=r"http(s)?:\/\/mirror.*.com\/.*",
         mirrors="mirror1.com\nmirror2.com\nmirror3.com",
     )
 
