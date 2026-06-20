@@ -132,7 +132,7 @@ install_docker() {
 setup_kisscache() {
     log "Cloning the KissCache repository from $GIT_REPO..."
     pct exec $CONTAINER_ID -- bash -c "git clone -b $BRANCH $GIT_REPO /app/kisscache"
-    
+
     log "Starting Docker Compose services from the cloned repository..."
     pct exec $CONTAINER_ID -- bash -c "cd /app/kisscache && docker compose up -d"
 }
