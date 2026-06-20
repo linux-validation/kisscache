@@ -25,12 +25,9 @@ class StatisticAdmin(admin.ModelAdmin):
     list_display = ("stat_display", "value", "humanized")
     ordering = ["stat"]
 
-    @admin.display(
-        description="Statistic"
-    )
+    @admin.display(description="Statistic")
     def stat_display(self, obj):
         return obj.get_stat_display()
-
 
     def humanized(self, obj):
         if obj.stat in [Statistic.STAT_DOWNLOAD, Statistic.STAT_UPLOAD]:
@@ -41,5 +38,3 @@ class StatisticAdmin(admin.ModelAdmin):
 class MirrorAdmin(admin.ModelAdmin):
     list_display = ("url_pattern", "mirrors")
     search_fields = ("url_pattern",)
-
-
