@@ -22,8 +22,8 @@ DOWNLOAD_BACKOFF_FACTOR = 0.1
 # base directory
 DOWNLOAD_PATH = "/var/cache/kiss-cache"
 
-# Download 1kB by 1kB
-DOWNLOAD_CHUNK_SIZE = 1024
+# Download 8kB by 8kB
+DOWNLOAD_CHUNK_SIZE = 8192
 
 # By default, keep the resources for 10 days
 DEFAULT_TTL = "10d"
