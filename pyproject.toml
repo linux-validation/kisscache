@@ -36,3 +36,6 @@ build.targets.wheel.packages = [ "kiss_cache" ]
 
 [tool.ruff]
 lint.isort.force-single-line = true
+
+[tool.pyproject-fmt]
+keep_full_version = true
