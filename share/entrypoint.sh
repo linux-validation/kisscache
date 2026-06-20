@@ -115,5 +115,5 @@ then
   GUNICORN_THREADS=${GUNICORN_THREADS:-10}
   GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
   echo "Starting gunicorn with workers=$GUNICORN_WORKERS and threads=$GUNICORN_THREADS"
-  exec gunicorn3 --log-level debug --log-file - --access-logfile - --bind 0.0.0.0:80 --threads "$GUNICORN_THREADS" --workers "$GUNICORN_WORKERS" --worker-tmp-dir /dev/shm website.wsgi
+  exec gunicorn --log-level debug --log-file - --access-logfile - --bind 0.0.0.0:80 --threads "$GUNICORN_THREADS" --workers "$GUNICORN_WORKERS" --worker-tmp-dir /dev/shm website.wsgi
 fi
