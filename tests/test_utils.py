@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
@@ -95,7 +94,7 @@ def test_requests_retry(settings):
 @pytest.mark.django_db
 def test_get_mirror_url():
     # Set up a Mirror object in the database
-    mirror = Mirror.objects.create(
+    _mirror = Mirror.objects.create(
         url_pattern=r"^https://example\.com", mirrors="mirror1.com\nmirror2.com"
     )
     # URL to test

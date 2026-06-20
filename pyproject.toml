@@ -35,6 +35,17 @@ dev = [ "pytest>=8.3.5", "pytest-cov>=5.0.0", "pytest-django>=4.5.2", "pytest-mo
 build.targets.wheel.packages = [ "kiss_cache" ]
 
 [tool.ruff]
+lint.extend-select = [
+  "E4", # pycodestyle import issues
+  "E7", # pycodestyle statement issues
+  "E9", # pycodestyle runtime issues
+  "F",  # pyflakes: undefined names, unused imports, etc.
+  "F4", # pyflakes imports
+  "F8", # pyflakes names
+  "G",  # flake8-logging
+  "UP", # pyupgrade: modernize Python
+  "W",  # pycodestyle warnings
+]
 lint.isort.force-single-line = true
 
 [tool.pyproject-fmt]

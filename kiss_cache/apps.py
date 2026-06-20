@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
@@ -14,4 +13,4 @@ class KissCacheConfig(AppConfig):
     name = "kiss_cache"
 
     def ready(self):
-        import kiss_cache.signals  # pylint: disable=import-outside-toplevel
+        import kiss_cache.signals  # noqa: F401 (side-effect import to register signals)

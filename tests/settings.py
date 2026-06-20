@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
@@ -80,4 +79,4 @@ STATIC_URL = "/static/"
 # Celery settings
 CELERY_BROKER_URL = "redis://localhost:6379/0"
 
-from kiss_cache.settings import *
+from kiss_cache.settings import *  # noqa: E402,F403 (Django test config overlay)

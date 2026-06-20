@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
@@ -45,7 +44,7 @@ def test_resource_total_size(db):
     assert Resource.total_size() == 4212 + 5379 + 2
 
 
-def test_resource_total_size(db, settings):
+def test_resource_is_over_quota(db, settings):
     settings.RESOURCE_QUOTA = 12
     assert Resource.is_over_quota() is False
 
@@ -236,7 +235,7 @@ def test_create_mirror():
     assert mirror.url_pattern == r"http(s)?:\/\/mirror.*.com\/.*"
     assert mirror.mirrors == "mirror1.com\nmirror2.com\nmirror3.com"
 
-    assert str(mirror) == "Mirrors for pattern: http(s)?:\/\/mirror.*.com\/.*"
+    assert str(mirror) == r"Mirrors for pattern: http(s)?:\/\/mirror.*.com\/.*"
 
 
 @pytest.mark.django_db

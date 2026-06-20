@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
@@ -35,7 +34,7 @@ def test_help(client):
     assert ret.templates[1].name == "kiss_cache/base.html"
     assert ret.context["ALLOWED_NETWORKS"] == []
     assert ret.context["user_ip"] == "127.0.0.1"
-    assert ret.context["user_ip_allowed"] == True
+    assert ret.context["user_ip_allowed"] is True
     assert ret.context["api_url"] == "http://testserver/api/v1/fetch"
     assert ret.context["delete_url"] == "http://testserver/api/v1/delete"
 
@@ -231,13 +230,14 @@ def test_api_fetch(client, db, mocker, settings, tmpdir):
 
     settings.DOWNLOAD_PATH = str(tmpdir)
 
-    fetch = mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
+    _fetch = mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
 
     # Download a first time with nginx backend
     ret = client.get(f"{reverse('api.fetch')}?url={URL}&ttl=42d")
     assert isinstance(ret, HttpResponse)
-    assert ret["X-Accel-Redirect"] == str(
-        "/internal/10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
+    assert (
+        ret["X-Accel-Redirect"]
+        == "/internal/10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
     )
 
     assert ret.status_code == 200
@@ -309,7 +309,7 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
 
     settings.DOWNLOAD_PATH = str(tmpdir)
 
-    fetch = mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
+    _fetch = mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
     ret = client.get(
         f"{reverse('api.fetch_by_filename', kwargs={'filename': 'ramdisk.tgz'})}?url={URL}&ttl=42d"
     )
@@ -325,7 +325,7 @@ def test_api_delete(client, db, settings, tmpdir):
     URL = "https://example.com"
     settings.DOWNLOAD_PATH = str(tmpdir)
 
-    res = Resource.objects.create(
+    _res = Resource.objects.create(
         url=URL,
         state=Resource.STATE_FINISHED,
         status_code=200,
