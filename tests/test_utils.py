@@ -32,6 +32,15 @@ class Request:
     def __init__(self, meta):
         self.META = meta
 
+    @property
+    def headers(self):
+        """Mimic Django's CaseInsensitiveMapping for request.headers."""
+        result = {}
+        for key, value in self.META.items():
+            if key.startswith("HTTP_"):
+                result[key[5:].lower().replace("_", "-")] = value
+        return result
+
 
 def test_check_client_ip(settings):
     @check_client_ip

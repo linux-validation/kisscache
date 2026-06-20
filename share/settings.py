@@ -30,7 +30,14 @@ MIDDLEWARE = [
 ]
 
 WHITENOISE_KEEP_ONLY_HASHED_FILES = True
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Celery settings
 CELERY_BROKER_URL = "redis://redis:6379/0"

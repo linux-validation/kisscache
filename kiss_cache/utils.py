@@ -23,8 +23,8 @@ from kiss_cache.models import Mirror
 
 
 def get_user_ip(request):
-    if "HTTP_X_FORWARDED_FOR" in request.META:
-        return request.META["HTTP_X_FORWARDED_FOR"].split(",")[0]
+    if "x-forwarded-for" in request.headers:
+        return request.headers["x-forwarded-for"].split(",")[0]
     if "REMOTE_ADDR" in request.META:
         return request.META["REMOTE_ADDR"]
     raise Exception("Unable to get the user ip")
