@@ -271,7 +271,9 @@ def test_api_fetch(client, db, mocker, settings, tmpdir):
     # Download a forth time: set the Content-Disposition
     # Do not use xsendfile anymore
     settings.USE_XSENDFILE = False
-    ret = client.get(f"{reverse('api.fetch_by_filename', kwargs={'filename': 'kernel'})}?url={URL}")
+    ret = client.get(
+        f"{reverse('api.fetch_by_filename', kwargs={'filename': 'kernel'})}?url={URL}"
+    )
     assert isinstance(ret, FileResponse)
     assert ret.status_code == 200
     assert ret["content-type"] == "text/html; charset=UTF-8"
@@ -308,7 +310,9 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
     settings.DOWNLOAD_PATH = str(tmpdir)
 
     fetch = mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
-    ret = client.get(f"{reverse('api.fetch_by_filename', kwargs={'filename': 'ramdisk.tgz'})}?url={URL}&ttl=42d")
+    ret = client.get(
+        f"{reverse('api.fetch_by_filename', kwargs={'filename': 'ramdisk.tgz'})}?url={URL}&ttl=42d"
+    )
     assert isinstance(ret, StreamingHttpResponse)
     assert ret.status_code == 200
     assert ret["content-type"] == "text/html; charset=UTF-8"
@@ -328,9 +332,7 @@ def test_api_delete(client, db, settings, tmpdir):
         content_length=5,
     )
     (tmpdir / "10").mkdir()
-    fpath = (
-        tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
-    )
+    fpath = tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
     fpath.write_text("hello", encoding="utf-8")
     assert fpath.exists()
 

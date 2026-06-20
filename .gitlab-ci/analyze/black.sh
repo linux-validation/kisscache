@@ -4,9 +4,8 @@ set -e
 
 if [ "$1" = "setup" ]
 then
-  apt-get -q update
-  apt-get install --no-install-recommends --yes black
+  uv sync --frozen --no-install-project --group dev
 else
   set -x
-  LC_ALL=C.UTF-8 LANG=C.UTF-8 black --check --diff kiss_cache
+  uv run ruff format --check --diff kiss_cache tests/
 fi
