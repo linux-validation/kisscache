@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
@@ -31,7 +30,14 @@ MIDDLEWARE = [
 ]
 
 WHITENOISE_KEEP_ONLY_HASHED_FILES = True
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Celery settings
 CELERY_BROKER_URL = "redis://redis:6379/0"
@@ -39,7 +45,7 @@ CELERY_BROKER_URL = "redis://redis:6379/0"
 # Load settings from the configuration file
 with contextlib.suppress(FileNotFoundError):
     data = pathlib.Path("/etc/kiss-cache.yaml").read_text(encoding="utf-8")
-    for (k, v) in yaml.safe_load(data).items():
+    for k, v in yaml.safe_load(data).items():
         globals()[k] = v
 
 # Add sentry if SENTRY_DSN is defined

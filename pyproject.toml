@@ -29,7 +29,30 @@ dependencies = [
 urls.Homepage = "https://gitlab.com/linaro/KissCache"
 
 [dependency-groups]
-dev = [ "pytest>=8.3.5", "pytest-cov>=5.0.0", "pytest-django>=4.5.2", "pytest-mock>=3.14.0" ]
+dev = [ "pytest>=8.3.5", "pytest-cov>=5.0.0", "pytest-django>=4.5.2", "pytest-mock>=3.14.0", "ruff>=0.15.0" ]
 
 [tool.hatch]
 build.targets.wheel.packages = [ "kiss_cache" ]
+
+[tool.ruff]
+lint.extend-select = [
+  "E4", # pycodestyle import issues
+  "E7", # pycodestyle statement issues
+  "E9", # pycodestyle runtime issues
+  "F",  # pyflakes: undefined names, unused imports, etc.
+  "F4", # pyflakes imports
+  "F8", # pyflakes names
+  "G",  # flake8-logging
+  "UP", # pyupgrade: modernize Python
+  "W",  # pycodestyle warnings
+]
+lint.isort.force-single-line = true
+
+[tool.pyproject-fmt]
+keep_full_version = true
+
+[tool.bandit]
+skips = [
+  "B308", # blacklist_calls mark_safe
+  "B703", # django_mark_safe potential XSS on mark_safe function
+]

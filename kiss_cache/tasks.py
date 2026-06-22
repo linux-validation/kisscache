@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
@@ -51,7 +50,7 @@ def fetch(url, extra_headers=None):
         base = pathlib.Path(settings.DOWNLOAD_PATH)
         (base / res.path).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     except OSError as exc:
-        LOG.error("Unable to create the directory '%s'", str((base / res.path)))
+        LOG.error("Unable to create the directory '%s'", str(base / res.path))
         LOG.exception(exc)
         Resource.objects.filter(pk=res.pk).update(
             state=Resource.STATE_FINISHED, status_code=500

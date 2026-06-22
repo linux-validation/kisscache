@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # vim: set ts=4
 #
 # Copyright 2019 Linaro Limited
@@ -32,6 +31,15 @@ from kiss_cache.utils import (
 class Request:
     def __init__(self, meta):
         self.META = meta
+
+    @property
+    def headers(self):
+        """Mimic Django's CaseInsensitiveMapping for request.headers."""
+        result = {}
+        for key, value in self.META.items():
+            if key.startswith("HTTP_"):
+                result[key[5:].lower().replace("_", "-")] = value
+        return result
 
 
 def test_check_client_ip(settings):
@@ -95,7 +103,7 @@ def test_requests_retry(settings):
 @pytest.mark.django_db
 def test_get_mirror_url():
     # Set up a Mirror object in the database
-    mirror = Mirror.objects.create(
+    _mirror = Mirror.objects.create(
         url_pattern=r"^https://example\.com", mirrors="mirror1.com\nmirror2.com"
     )
     # URL to test
