@@ -30,7 +30,9 @@ stages:
 
 .analyze:
   extends: .job
-  image: debian:trixie
+  image: ghcr.io/astral-sh/uv:0.11-python3.13-trixie-slim
+  variables:
+    UV_LINK_MODE: copy
   stage: analyze
   except:
     refs:
@@ -41,16 +43,15 @@ stages:
 ########
 test-debian-13:
   extends: .job
-  image: debian:trixie
+  image: ghcr.io/astral-sh/uv:0.11-python3.13-trixie-slim
+  variables:
+    UV_LINK_MODE: copy
   stage: test
   before_script:
-  - apt-get update -qq
-  - apt-get install --no-install-recommends -y python3 python3-celery python3-django python3-requests
-  - apt-get install --no-install-recommends -y python3-pytest python3-pylint-celery python3-pytest-cov python3-pytest-django python3-pytest-mock
+  - uv sync --frozen --group dev
   coverage: '/^TOTAL.+ (\d+)%$/'
   script:
-  - ln -s tests/manage.py manage.py
-  - PYTHONPATH=. pytest-3 -v --junitxml=kiss_cache.xml --cov=kiss_cache --cov-report=html --cov-report=term --cov-fail-under=92 tests/
+  - uv run pytest -v --junitxml=kiss_cache.xml --cov=kiss_cache --cov-report=html --cov-report=term --cov-fail-under=92 tests/
   artifacts:
     paths:
     - htmlcov/
@@ -86,7 +87,6 @@ docker-arm64:
   extends: .docker
   tags:
    - saas-linux-small-arm64
-
 
 ###########
 # Publish #
