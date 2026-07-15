@@ -36,6 +36,45 @@ def test_resource_path(db):
     )
 
 
+def test_resource_hash_headers():
+    # No headers is the empty string, so unauthenticated resources keep their
+    # original url-only path.
+    assert Resource.hash_headers({}) == ""
+    assert Resource.hash_headers(None) == ""
+
+    # Header names are case-insensitive, values are not.
+    assert Resource.hash_headers(
+        {"Authorization": "Bearer x"}
+    ) == Resource.hash_headers({"authorization": "Bearer x"})
+    assert Resource.hash_headers(
+        {"Authorization": "Bearer x"}
+    ) != Resource.hash_headers({"Authorization": "Bearer y"})
+    # A different header name is a different resource.
+    assert Resource.hash_headers({"Authorization": "t"}) != Resource.hash_headers(
+        {"Authentication": "t"}
+    )
+
+
+def test_resource_path_headers(db):
+    # The same url fetched with different headers is stored in different files.
+    plain = Resource.objects.create(url="https://example.com/kernel")
+    auth = Resource.objects.create(
+        url="https://example.com/kernel",
+        headers_hash=Resource.hash_headers({"Authorization": "Bearer x"}),
+    )
+    other = Resource.objects.create(
+        url="https://example.com/kernel",
+        headers_hash=Resource.hash_headers({"Authorization": "Bearer y"}),
+    )
+    assert plain.path != auth.path
+    assert auth.path != other.path
+    # An empty headers_hash keeps the original url-only path.
+    assert (
+        plain.path
+        == "76/66828e5a43fe3e8c06c2e62ad216cc354c91da92f093d6d8a7c3dc9d1baa82"
+    )
+
+
 def test_resource_total_size(db):
     assert Resource.total_size() == 0
 

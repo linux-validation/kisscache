@@ -192,13 +192,15 @@ def api_delete(request):
     if url is None:
         return HttpResponseBadRequest("'url' should be specified")
 
-    try:
-        res = Resource.objects.get(url=url)
-    except Resource.DoesNotExist:
+    # A url can now be cached several times with different headers. Deleting by
+    # url removes every cached copy of it.
+    resources = Resource.objects.filter(url=url)
+    if not resources.exists():
         raise Http404()
 
-    # Deleting the resource also removes the underlying file (see signals).
-    res.delete()
+    # Delete one by one so the post_delete signal unlinks each file.
+    for res in resources:
+        res.delete()
     return HttpResponse("Resource deleted")
 
 
@@ -234,11 +236,18 @@ def api_fetch(request, filename=None):
     except Exception:
         return HttpResponseBadRequest("Invalid 'ttl' value")
 
+    # A resource is unique by url and headers: a client fetching with different
+    # credentials gets its own resource, downloaded with its own headers. This
+    # is what lets several clients share (or not) a url with their own tokens,
+    # while the remote decides who may fetch it.
+    headers_hash = Resource.hash_headers(extra_headers)
     try:
         # TODO: remove in case of exception in this function
-        res, created = Resource.objects.get_or_create(url=url)
+        res, created = Resource.objects.get_or_create(
+            url=url, headers_hash=headers_hash
+        )
     except IntegrityError:
-        res = Resource.objects.get(url=url)
+        res = Resource.objects.get(url=url, headers_hash=headers_hash)
         created = False
 
     # Set the last usage and increase the counter
@@ -282,13 +291,6 @@ def api_fetch(request, filename=None):
         Statistic.requests(1)
         if res.content_length:
             Statistic.upload(res.content_length)
-
-    # check request headers match saved headers
-    if res.extra_headers:
-        if res.extra_headers != extra_headers:
-            return HttpResponse(
-                "Request headers do not match saved headers.", status=401
-            )
 
     # The task has been started.
     if res.state == Resource.STATE_DOWNLOADING:

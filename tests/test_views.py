@@ -271,7 +271,9 @@ def test_api_fetch(client, db, mocker, settings, tmpdir):
     # Download a forth time: set the Content-Disposition
     # Do not use xsendfile anymore
     settings.USE_XSENDFILE = False
-    ret = client.get(f"{reverse('api.fetch_by_filename', kwargs={'filename': 'kernel'})}?url={URL}")
+    ret = client.get(
+        f"{reverse('api.fetch_by_filename', kwargs={'filename': 'kernel'})}?url={URL}"
+    )
     assert isinstance(ret, FileResponse)
     assert ret.status_code == 200
     assert ret["content-type"] == "text/html; charset=UTF-8"
@@ -308,7 +310,9 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
     settings.DOWNLOAD_PATH = str(tmpdir)
 
     fetch = mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
-    ret = client.get(f"{reverse('api.fetch_by_filename', kwargs={'filename': 'ramdisk.tgz'})}?url={URL}&ttl=42d")
+    ret = client.get(
+        f"{reverse('api.fetch_by_filename', kwargs={'filename': 'ramdisk.tgz'})}?url={URL}&ttl=42d"
+    )
     assert isinstance(ret, StreamingHttpResponse)
     assert ret.status_code == 200
     assert ret["content-type"] == "text/html; charset=UTF-8"
@@ -317,7 +321,61 @@ def test_api_fetch_streaming(client, db, mocker, settings, tmpdir):
     assert next(ret.streaming_content) == b"Hello world!"
 
 
+def test_api_fetch_headers(client, db, mocker, settings, tmpdir):
+    """The same url fetched with different headers is cached separately"""
+    import pathlib
+
+    URL = "https://example.com"
+    settings.DOWNLOAD_PATH = str(tmpdir)
+    settings.USE_XSENDFILE = False
+
+    fetched = []
+
+    def mocked_fetch(url, extra_headers):
+        # The worker resolves the resource by url and headers, exactly as the
+        # real task does, and writes distinct content per credential.
+        fetched.append(extra_headers)
+        res = Resource.objects.get(
+            url=url, headers_hash=Resource.hash_headers(extra_headers)
+        )
+        body = extra_headers.get("Authorization", "anonymous").encode("utf-8")
+        Resource.objects.filter(pk=res.pk).update(
+            state=Resource.STATE_FINISHED, status_code=200, content_length=len(body)
+        )
+        res.refresh_from_db()
+        path = pathlib.Path(str(tmpdir)) / res.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+
+    mocker.patch("kiss_cache.tasks.fetch.delay", mocked_fetch)
+
+    # First client, with its own token
+    ret = client.get(f"{reverse('api.fetch')}?url={URL}", HTTP_AUTHORIZATION="one")
+    assert ret.status_code == 200
+    assert b"".join(ret.streaming_content) == b"one"
+
+    # Second client, different token: a separate resource, downloaded again
+    ret = client.get(f"{reverse('api.fetch')}?url={URL}", HTTP_AUTHORIZATION="two")
+    assert ret.status_code == 200
+    assert b"".join(ret.streaming_content) == b"two"
+
+    # Two resources for the same url, two downloads, two distinct files
+    assert Resource.objects.filter(url=URL).count() == 2
+    assert len(fetched) == 2
+    paths = {res.path for res in Resource.objects.filter(url=URL)}
+    assert len(paths) == 2
+
+    # First token again: served from cache, no new resource, no new download
+    ret = client.get(f"{reverse('api.fetch')}?url={URL}", HTTP_AUTHORIZATION="one")
+    assert ret.status_code == 200
+    assert b"".join(ret.streaming_content) == b"one"
+    assert Resource.objects.filter(url=URL).count() == 2
+    assert len(fetched) == 2
+
+
 def test_api_delete(client, db, settings, tmpdir):
+    import pathlib
+
     URL = "https://example.com"
     settings.DOWNLOAD_PATH = str(tmpdir)
 
@@ -328,11 +386,22 @@ def test_api_delete(client, db, settings, tmpdir):
         content_length=5,
     )
     (tmpdir / "10").mkdir()
-    fpath = (
-        tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
-    )
+    fpath = tmpdir / "10/0680ad546ce6a577f42f52df33b4cfdca756859e664b8d7de329b150d09ce9"
     fpath.write_text("hello", encoding="utf-8")
     assert fpath.exists()
+
+    # A second copy of the same url fetched with headers
+    auth = Resource.objects.create(
+        url=URL,
+        headers_hash=Resource.hash_headers({"Authorization": "token"}),
+        state=Resource.STATE_FINISHED,
+        status_code=200,
+        content_length=5,
+    )
+    auth_path = pathlib.Path(str(tmpdir)) / auth.path
+    auth_path.parent.mkdir(parents=True, exist_ok=True)
+    auth_path.write_text("hello", encoding="utf-8")
+    assert auth_path.exists()
 
     # Missing url
     ret = client.get(reverse("api.delete"))
@@ -342,11 +411,12 @@ def test_api_delete(client, db, settings, tmpdir):
     ret = client.get(f"{reverse('api.delete')}?url=https://example.com/missing")
     assert ret.status_code == 404
 
-    # Delete the resource: the database row and the file are both removed
+    # Delete by url removes every cached copy and their files
     ret = client.get(f"{reverse('api.delete')}?url={URL}")
     assert ret.status_code == 200
     assert Resource.objects.filter(url=URL).count() == 0
     assert not fpath.exists()
+    assert not auth_path.exists()
 
 
 def test_api_fetch_errors(client, db, mocker):

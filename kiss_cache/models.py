@@ -11,6 +11,7 @@
 
 import contextlib
 import hashlib
+import json
 import pathlib
 import time
 import re
@@ -22,7 +23,7 @@ from django.conf import settings
 
 
 class Resource(models.Model):
-    url = models.URLField(unique=True, max_length=4096)
+    url = models.URLField(max_length=4096)
     created_at = models.DateTimeField(auto_now_add=True)
     ttl = models.IntegerField(default=60 * 60 * 24)
     content_length = models.BigIntegerField(blank=True, null=True)
@@ -30,7 +31,11 @@ class Resource(models.Model):
     last_usage = models.DateTimeField(blank=True, null=True)
     usage = models.IntegerField(default=0)
     downloaded_speed = models.FloatField(default=0)
-    extra_headers = models.JSONField(default=dict)
+    # A resource is uniquely identified by its url *and* the headers used to
+    # fetch it: the same url fetched with different credentials is a different
+    # resource with its own cached file. Only a hash of the headers is stored,
+    # never the credentials themselves. An empty string means "no headers".
+    headers_hash = models.CharField(max_length=64, default="", blank=True)
 
     STATE_SCHEDULED, STATE_DOWNLOADING, STATE_FINISHED = range(3)
     STATE_CHOICES = (
@@ -40,6 +45,24 @@ class Resource(models.Model):
     )
     state = models.IntegerField(choices=STATE_CHOICES, default=STATE_SCHEDULED)
     status_code = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = (("url", "headers_hash"),)
+
+    @staticmethod
+    def hash_headers(headers):
+        """
+        Compute a stable cache-key hash for a set of request headers.
+
+        Header names are case-insensitive, so they are lower-cased before
+        hashing; values are kept as-is. An empty set of headers hashes to the
+        empty string so that unauthenticated resources keep their original path.
+        """
+        if not headers:
+            return ""
+        canonical = {name.lower(): value for name, value in headers.items()}
+        blob = json.dumps(canonical, sort_keys=True)
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
     @property
     def fullpath(self):
@@ -51,6 +74,10 @@ class Resource(models.Model):
         # TODO: take created_at into account
         m = hashlib.sha256()
         m.update(self.url.encode("utf-8"))
+        # Resources fetched with headers get a distinct file. Resources without
+        # headers keep hashing the url alone, so their path is unchanged.
+        if self.headers_hash:
+            m.update(self.headers_hash.encode("utf-8"))
         data = m.hexdigest()
         return str(pathlib.Path(data[0:2]) / data[2:])
 

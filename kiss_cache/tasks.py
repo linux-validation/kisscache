@@ -33,13 +33,18 @@ LOG = get_task_logger(__name__)
 
 
 @shared_task(ignore_result=True)
-def fetch(url, extra_headers={}):
+def fetch(url, extra_headers=None):
     # TODO: should the resource be removed from the db if an exception is
     # raised (instead of setting a 50x status_code?)
+    if extra_headers is None:
+        extra_headers = {}
     LOG.info("Fetching '%s'", url)
-    # Grab the object from the database
+    # Grab the object from the database. A url is unique by its headers, so the
+    # same headers used by the caller identify the resource to download.
     try:
-        res = Resource.objects.get(url=url)
+        res = Resource.objects.get(
+            url=url, headers_hash=Resource.hash_headers(extra_headers)
+        )
     except Resource.DoesNotExist:
         LOG.error("Resource db object does not exist for '%s'", url)
         return
@@ -111,8 +116,6 @@ def fetch(url, extra_headers={}):
                 req.close()
                 return
             Resource.objects.filter(pk=res.pk).update(status_code=200)
-            # Set the headers
-            Resource.objects.filter(pk=res.pk).update(extra_headers=extra_headers)
             res.refresh_from_db()
 
             if retries == 0:
